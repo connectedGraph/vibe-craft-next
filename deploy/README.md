@@ -68,11 +68,10 @@ SMOKE_BASE=http://127.0.0.1:8794 bash deploy/deploy.sh   # 配合 ssh -L 隧道�
 7. **健康检查**：轮询 `$SMOKE_BASE/healthz`，每 2 秒一次，最多 60 秒；超时非 0 退出。
 8. **冒烟测试**（任一失败即整体失败并列出失败项）：
    - `GET /healthz` 200
-   - `GET /` 307
+   - `GET /` 200（首页不强制登录，未登录也能看到工具列表）
    - `GET /login` 200
    - `GET /api/v1/sync/state?app=prompt-capsule` 未登录 401
-   - `/adhd-text`、`/contextly`、`/expressing`、`/desktop-lite` 均 200
-   - `/prompt-capsule` 200；该页需要登录，未登录时按设计 307 跳到 `/login?next=/prompt-capsule`，此时也视为通过（其他 307 目标仍判失败）
+   - `/adhd-text`、`/contextly`、`/expressing`、`/desktop-lite`、`/prompt-capsule` 均 200（工具页都开放，登录只用于同步）
    - `GET /sw.js` 200
 9. **摘要**：打印模式、主机、目标目录、备份路径、服务与检查结果、耗时、回滚命令。
 

@@ -19,7 +19,7 @@ readonly RUNTIME_FILES=(node_modules .next public src package.json package-lock.
 readonly SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10)
 # 冒烟检查：路径 + 期望状态码
 readonly SMOKE_STATUS_CHECKS=(
-  "/ 307"
+  "/ 200"
   "/login 200"
   "/api/v1/sync/state?app=prompt-capsule 401"
   "/adhd-text 200"
@@ -409,16 +409,12 @@ smoke() {
       path="${line% *}"
       expected="${line##* }"
       print_cmd curl -sS --noproxy '*' --max-time 10 -o /dev/null -w '%{http_code}' "$SMOKE_BASE$path"
-      if [[ "$path" == "/prompt-capsule" ]]; then
-        printf '    # 期望 %s；未登录时 307 跳到 /login?next=/prompt-capsule 也算通过\n' "$expected"
-      else
-        printf '    # 期望 %s\n' "$expected"
-      fi
+      printf '    # 期望 %s\n' "$expected"
     done
     return 0
   fi
 
-  local failures=() code line path expected location
+  local failures=() code line path expected
   code="$(http_code "$SMOKE_BASE/healthz")"
   if [[ "$code" == "200" ]]; then
     printf '  [通过] GET /healthz -> %s\n' "$code"
@@ -434,14 +430,6 @@ smoke() {
     if [[ "$code" == "$expected" ]]; then
       printf '  [通过] GET %s -> %s\n' "$path" "$code"
       continue
-    fi
-    # prompt-capsule 本身需要登录；未登录时按设计 307 到登录页，视为路由正常
-    if [[ "$path" == "/prompt-capsule" && "$code" == "307" ]]; then
-      location="$(curl -sS --noproxy '*' --max-time 10 -o /dev/null -w '%{redirect_url}' "$SMOKE_BASE$path" 2>/dev/null || true)"
-      if [[ "$location" == *"/login?next=/prompt-capsule" ]]; then
-        printf '  [通过] GET %s -> 307（未登录，重定向到登录页）\n' "$path"
-        continue
-      fi
     fi
     printf '  [失败] GET %s -> %s（期望 %s）\n' "$path" "$code" "$expected"
     failures+=("GET $path 期望 $expected，实际 $code")

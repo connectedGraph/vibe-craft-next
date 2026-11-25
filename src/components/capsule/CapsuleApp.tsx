@@ -470,7 +470,7 @@ export default function CapsuleApp({ username }: Props) {
         </div>
 
         <footer className="flex items-center justify-between border-t border-white/60 bg-white/40 px-4 py-2 text-[11px] text-slate-400">
-          <span>{username} · 本地存储 + 云端同步</span>
+          <span>{username ? `${username} · 本地存储 + 云端同步` : "未登录 · 数据只存本地，登录后可同步"}</span>
           <span>{sync.error ? sync.error : sync.lastSyncAt ? `上次同步 ${new Date(sync.lastSyncAt).toLocaleTimeString()}` : ''}</span>
         </footer>
       </main>

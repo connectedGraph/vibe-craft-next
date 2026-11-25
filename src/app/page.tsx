@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { authConfig, ensureSeedOnce, findUser, getMode, identityFromCookies } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +53,7 @@ export default async function Home() {
     const admin = findUser(authConfig.adminUser || "admin");
     if (admin && !admin.disabled) identity = { username: admin.username, role: admin.role, user: admin };
   }
-  if (!identity) redirect("/login");
+  // 首页不强制登录：工具本地可用，登录按钮只是同步入口。
 
   return (
     <main className="min-h-screen bg-[#0b0f19] bg-[radial-gradient(at_0%_0%,rgba(99,102,241,.18)_0px,transparent_50%),radial-gradient(at_100%_100%,rgba(168,85,247,.16)_0px,transparent_50%)] px-5 py-10 text-slate-100">
@@ -69,20 +68,28 @@ export default async function Home() {
             </p>
           </div>
           <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-              {identity.username}
-              {identity.role === "admin" ? " · 管理员" : ""}
-            </span>
-            {identity.role === "admin" && (
-              <Link href="/admin" className="rounded-full border border-white/10 bg-white/5 px-3 py-2.5 transition hover:border-indigo-400/40 hover:text-indigo-300 sm:py-1.5">
-                管理
+            {identity ? (
+              <>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2.5 sm:py-1.5">
+                  {identity.username}
+                  {identity.role === "admin" ? " · 管理员" : ""}
+                </span>
+                {identity.role === "admin" && (
+                  <Link href="/admin" className="rounded-full border border-white/10 bg-white/5 px-3 py-2.5 transition hover:border-indigo-400/40 hover:text-indigo-300 sm:py-1.5">
+                    管理
+                  </Link>
+                )}
+                <form action="/api/v1/auth/logout" method="post">
+                  <button className="rounded-full border border-white/10 bg-white/5 px-3 py-2.5 transition hover:border-red-400/40 hover:text-red-300 sm:py-1.5">
+                    退出
+                  </button>
+                </form>
+              </>
+            ) : (
+              <Link href="/login" className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-2.5 text-indigo-300 transition hover:border-indigo-400/60 sm:py-1.5">
+                登录 / 注册
               </Link>
             )}
-            <form action="/api/v1/auth/logout" method="post">
-              <button className="rounded-full border border-white/10 bg-white/5 px-3 py-2.5 transition hover:border-red-400/40 hover:text-red-300 sm:py-1.5">
-                退出
-              </button>
-            </form>
           </div>
         </header>
 

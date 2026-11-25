@@ -8,6 +8,7 @@ import {
   dailyQueue,
   deleteCard,
   EMPTY_CARD,
+  ensureSeedCard,
   loadData,
   rateCard,
   saveSettings,
@@ -22,14 +23,6 @@ type View = "home" | "library" | "editor" | "settings" | "study-setup" | "study-
 type CardForm = Pick<Card, "term" | "sentence" | "preContext" | "postContext" | "definition">;
 
 const EMPTY_FORM: CardForm = { ...EMPTY_CARD };
-
-const DEMO_CARD: CardForm = {
-  term: "epiphany",
-  sentence: "It was a sudden epiphany that changed his life path forever.",
-  preContext: "He had been struggling with the problem for years without a solution.",
-  postContext: "From that moment on, he knew exactly what he needed to do.",
-  definition: "n. 顿悟，突然的感悟; (神灵的)显现",
-};
 
 async function callDeepSeek(key: string, messages: { role: string; content: string }[], system = "") {
   if (!key) throw new Error("Missing API Key. Please set it in Settings.");
@@ -108,15 +101,10 @@ export default function ContextlyApp() {
 
   const refresh = useCallback(() => setData(loadData()), []);
 
-  // 首次加载：空库时补一张演示卡（与旧版 init 行为一致）
+  // 首次加载：只有从未存过数据时才补一张引导卡（等幂，删光了也不会再加）
   useEffect(() => {
-    const initial = loadData();
-    if (initial.cards.length === 0) {
-      addCard(DEMO_CARD);
-      setData(loadData());
-    } else {
-      setData(initial);
-    }
+    ensureSeedCard();
+    setData(loadData());
   }, []);
 
   // 云端回调会写 localStorage，这里跟本地事件同步

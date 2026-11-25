@@ -92,6 +92,74 @@ body {
   background: rgba(255, 240, 0, 0.65);
 }
 
+/* ── Prompt Capsule（还原旧版玻璃拟态） ── */
+.capsule-root {
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+.capsule-root .ambient-light {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.capsule-root .blob {
+  position: absolute;
+  filter: blur(80px);
+  opacity: 0.6;
+  border-radius: 9999px;
+  animation: capsule-float 20s infinite ease-in-out alternate;
+}
+.capsule-root .blob-1 { top: -10%; left: -10%; width: 50vw; height: 50vw; background: #e0e7ff; }
+.capsule-root .blob-2 { bottom: -10%; right: -10%; width: 60vw; height: 60vw; background: #f3e8ff; animation-delay: -5s; }
+.capsule-root .blob-3 { top: 40%; left: 40%; width: 40vw; height: 40vw; background: #ccfbf1; animation-delay: -10s; opacity: 0.4; }
+@keyframes capsule-float {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(30px, 50px) scale(1.1); }
+}
+.capsule-root .glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  border-radius: 16px;
+}
+.capsule-root .glass-header {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+}
+.capsule-root .bri-highlight.active {
+  background-color: #fce7f3;
+  border-bottom-color: #db2777;
+  color: #831843;
+}
+.capsule-root.is-zen .ambient-light { opacity: 0.3; }
+.capsule-root .katex { font-size: 1.05em; }
+.capsule-root .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+
+@media (max-width: 1023.98px) {
+  .capsule-root #capsule-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    margin-left: 0;
+    transform: translateX(-105%);
+    box-shadow: 18px 0 50px -30px rgba(15, 23, 42, 0.45);
+  }
+  .capsule-root #capsule-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  .capsule-root.is-zen #capsule-sidebar {
+    transform: translateX(-105%);
+  }
+}
+
 /* 移动端/平板表单控件统一 16px，避免 iOS 聚焦时自动放大页面 */
 @media (max-width: 1023.98px) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),

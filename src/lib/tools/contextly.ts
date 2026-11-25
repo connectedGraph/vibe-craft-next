@@ -37,6 +37,44 @@ export const EMPTY_CARD: Omit<Card, "id" | "created" | "state" | "due" | "stabil
   definition: "",
 };
 
+/** 首次使用的引导卡，内容与旧版 app.init 一致。 */
+export const SEED_CARD: typeof EMPTY_CARD = {
+  term: "epiphany",
+  sentence: "It was a sudden epiphany that changed his life path forever.",
+  preContext: "He had been struggling with the problem for years without a solution.",
+  postContext: "From that moment on, he knew exactly what he needed to do.",
+  definition: "n. 顿悟，突然的感悟; (神灵的)显现",
+};
+
+/**
+ * 只有「从来没有存过数据」时才写入引导卡（等幂）：
+ * 用户把卡片删光后再次进入，不会再被塞回来。
+ */
+export function ensureSeedCard(): boolean {
+  if (typeof window === "undefined") return false;
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(KEY);
+  } catch {
+    return false;
+  }
+  if (raw !== null) return false;
+  const now = Date.now();
+  const card: Card = {
+    id: generateId(),
+    ...SEED_CARD,
+    created: now,
+    state: "new",
+    due: now,
+    stability: 0,
+    difficulty: 0,
+    reps: 0,
+    updatedAt: now,
+  };
+  saveData({ settings: {}, cards: [card] });
+  return true;
+}
+
 export function loadData(): StoreData {
   if (typeof window === "undefined") return { settings: {}, cards: [] };
   try {

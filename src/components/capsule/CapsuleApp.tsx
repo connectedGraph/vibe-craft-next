@@ -1,125 +1,175 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { marked } from 'marked';
-import { useCapsuleSync, type Annotation, type CapsuleDoc } from './useSync';
-
-const STORAGE_KEY = 'bri_app_pro_v2';
-const DEFAULT_CATEGORIES = ['General', 'Vocabulary', 'Grammar', 'Reading', 'AI Agent'];
-
-function genId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
-}
-
-function escapeReg(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function demoDoc(): CapsuleDoc {
-  return {
-    id: genId(),
-    title: 'Welcome to Vibe Craft',
-    category: 'General',
-    tags: ['guide'],
-    question: '### How to use Prompt Capsule?\n\nWrite a question or paste a conversation on top, and put the analysis below.',
-    answer:
-      'In **Note** mode you can select any text to add an annotation.\n\nTry selecting the word "annotation" in this sentence.\n\n> Data stays in your browser; the account is only used to sync between devices.',
-    annotations: [],
-    updatedAt: Date.now(),
-  };
-}
+import Script from 'next/script';
+import {
+  addCategory as addCategoryTo,
+  allTags,
+  applyRemoteState,
+  backupKeyNow,
+  deleteCategory as deleteCategoryFrom,
+  exportMarkdownText,
+  filterDocs,
+  genId,
+  loadState,
+  mergeImport,
+  renameCategory as renameCategoryIn,
+  saveState,
+  type CapsuleDoc,
+  type CapsuleMode,
+  type CapsuleState,
+} from '@/lib/tools/capsule';
+import { useCapsuleSync } from './useSync';
+import PreviewPane, { type SelectionInfo } from './PreviewPane';
+import EditorPane from './EditorPane';
+import LibraryGrid from './LibraryGrid';
+import AnnotationDrawer from './AnnotationDrawer';
+import CategoryModal from './CategoryModal';
+import SyncModal from './SyncModal';
+import HistoryModal from './HistoryModal';
+import Icon, { type IconName } from './Icon';
 
 type Props = { username: string };
 
-export default function CapsuleApp({ username }: Props) {
-  const [docs, setDocs] = useState<CapsuleDoc[]>([]);
-  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [mode, setMode] = useState<'view' | 'edit'>('view');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [mobileSidebar, setMobileSidebar] = useState(false);
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [tagFilter, setTagFilter] = useState('');
-  const [selection, setSelection] = useState('');
-  const [sanitize, setSanitize] = useState<(html: string) => string>(() => (h: string) => h);
-  const renderRef = useRef<HTMLDivElement | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
+const STATUS_TEXT: Record<string, string> = {
+  off: '同步未启用',
+  idle: '已同步',
+  syncing: '同步中…',
+  error: '同步失败',
+  'login-required': '需要登录',
+};
 
-  /* ── 载入本地数据 ── */
+export default function CapsuleApp({ username }: Props) {
+  const [state, setState] = useState<CapsuleState>(() => ({
+    docs: [],
+    activeDocId: null,
+    categories: [],
+    ui: {
+      mode: 'view',
+      globalMode: false,
+      sidebarOpen: true,
+      searchQuery: '',
+      searchCategory: '',
+      searchTag: '',
+      deepSearch: false,
+      zenMode: false,
+    },
+    __categoriesUpdatedAt: 0,
+  }));
+  const [loaded, setLoaded] = useState(false);
+  const [sanitize, setSanitize] = useState<(html: string) => string>(() => (h: string) => h);
+  const [katexReady, setKatexReady] = useState(false);
+  const [mobileSidebar, setMobileSidebar] = useState(false);
+  const [selection, setSelection] = useState<SelectionInfo>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
+  const [annotationDraft, setAnnotationDraft] = useState('');
+  const [editingText, setEditingText] = useState('');
+  const [focusNoteId, setFocusNoteId] = useState<string | null>(null);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [categoryError, setCategoryError] = useState('');
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [toast, setToast] = useState('');
+
+  const stateRef = useRef(state);
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const list: CapsuleDoc[] = Array.isArray(parsed.docs) ? parsed.docs : [];
-        setDocs(list);
-        setCategories(Array.isArray(parsed.categories) && parsed.categories.length ? parsed.categories : DEFAULT_CATEGORIES);
-        setActiveId(parsed.activeDocId || list[0]?.id || null);
-      } else {
-        const d = demoDoc();
-        setDocs([d]);
-        setActiveId(d.id);
-      }
-    } catch {
-      const d = demoDoc();
-      setDocs([d]);
-      setActiveId(d.id);
+    stateRef.current = state;
+  }, [state]);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* ── 初始化：读本地数据 / 窄屏收起侧栏（只在挂载时跑一次） ── */
+  useEffect(() => {
+    const next = loadState();
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      next.ui = { ...next.ui, sidebarOpen: false };
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 一次性本地数据水合，没有外部订阅可挂
+    setState(next);
     setLoaded(true);
   }, []);
 
-  /* ── 持久化 ── */
+  useEffect(() => {
+    import('dompurify')
+      .then((m) => setSanitize(() => (h: string) => m.default.sanitize(h)))
+      .catch(() => {});
+    fetch('/api/v1/auth/me', { credentials: 'same-origin' })
+      .then((r) => r.json())
+      .then((d) => setIsAdmin(d?.user?.role === 'admin'))
+      .catch(() => {});
+  }, []);
+
+  /* ── 持久化（400ms 防抖，避免每次按键都写盘） ── */
   useEffect(() => {
     if (!loaded) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ docs, categories, activeDocId: activeId, ui: { mode: 'view' } }));
-    } catch { /* 忽略 */ }
-  }, [docs, categories, activeId, loaded]);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    const snapshot = stateRef.current;
+    saveTimer.current = setTimeout(() => saveState(snapshot), 400);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [state, loaded]);
 
+  /* ── 跨标签页同步本地数据，保留当前 ui ── */
   useEffect(() => {
-    import('dompurify').then(m => setSanitize(() => (h: string) => m.default.sanitize(h))).catch(() => {});
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== 'bri_app_pro_v2') return;
+      const next = loadState();
+      next.ui = stateRef.current.ui;
+      setState(next);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const active = useMemo(() => docs.find(d => d.id === activeId) || null, [docs, activeId]);
+  const active = useMemo(
+    () => state.docs.find((d) => d.id === state.activeDocId) || null,
+    [state.docs, state.activeDocId],
+  );
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return docs
-      .filter(d => !categoryFilter || d.category === categoryFilter)
-      .filter(d => !tagFilter || (d.tags || []).includes(tagFilter))
-      .filter(d => !q || d.title.toLowerCase().includes(q) || d.question.toLowerCase().includes(q) || d.answer.toLowerCase().includes(q))
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  }, [docs, search, categoryFilter, tagFilter]);
+  const filtered = useMemo(
+    () =>
+      filterDocs(state.docs, {
+        query: state.ui.searchQuery,
+        category: state.ui.searchCategory,
+        tag: state.ui.searchTag,
+        deep: state.ui.deepSearch,
+      }),
+    [state.docs, state.ui.searchQuery, state.ui.searchCategory, state.ui.searchTag, state.ui.deepSearch],
+  );
 
-  const allTags = useMemo(() => {
-    const set = new Set<string>();
-    for (const d of docs) for (const t of d.tags || []) set.add(t);
-    return [...set].sort();
-  }, [docs]);
+  const tags = useMemo(() => allTags(state.docs), [state.docs]);
 
-  const patchDoc = useCallback((id: string, patch: Partial<CapsuleDoc>) => {
-    setDocs(prev => prev.map(d => (d.id === id ? { ...d, ...patch, updatedAt: Date.now() } : d)));
+
+  const patchUI = useCallback((ui: Partial<CapsuleState['ui']>) => {
+    setState((prev) => ({ ...prev, ui: { ...prev.ui, ...ui } }));
   }, []);
 
-  const applyRemote = useCallback(({ upserts, deletes, categories: remoteCats }: {
-    upserts: CapsuleDoc[];
-    deletes: string[];
-    categories: string[] | null;
-  }) => {
-    setDocs(prev => {
-      let next = [...prev];
-      for (const incoming of upserts) {
-        const i = next.findIndex(d => d.id === incoming.id);
-        if (i === -1) next.push(incoming);
-        else if (Number(incoming.updatedAt || 0) >= Number(next[i].updatedAt || 0)) next[i] = incoming;
-      }
-      if (deletes.length) next = next.filter(d => !deletes.includes(d.id));
-      return next;
-    });
-    if (remoteCats) setCategories(remoteCats);
+  const patchDoc = useCallback((id: string, changes: Partial<CapsuleDoc>) => {
+    setState((prev) => ({
+      ...prev,
+      docs: prev.docs.map((d) =>
+        d.id === id ? { ...d, ...changes, updatedAt: changes.updatedAt ?? Date.now() } : d,
+      ),
+    }));
   }, []);
+
+  /* ── 云同步 ── */
+  const applyRemote = useCallback(
+    ({ upserts, deletes, categories }: { upserts: CapsuleDoc[]; deletes: string[]; categories: string[] | null }) => {
+      setState((prev) => {
+        const changes = [
+          ...upserts.map((data) => ({ id: data.id, data })),
+          ...deletes.map((id) => ({ id, op: 'delete' })),
+        ];
+        const next = applyRemoteState(prev, changes).state;
+        return categories ? { ...next, categories, __categoriesUpdatedAt: Date.now() } : next;
+      });
+    },
+    [],
+  );
 
   const onConflict = useCallback((local: CapsuleDoc) => {
     const copy: CapsuleDoc = {
@@ -128,352 +178,654 @@ export default function CapsuleApp({ username }: Props) {
       title: (local.title || 'Untitled') + ' · 冲突副本',
       updatedAt: Date.now(),
     };
-    setDocs(prev => [...prev, copy]);
+    setState((prev) => ({ ...prev, docs: [...prev.docs, copy] }));
   }, []);
 
-  const sync = useCapsuleSync({ docs, categories, applyRemote, onConflict, enabled: loaded });
+  const sync = useCapsuleSync({
+    docs: state.docs,
+    categories: state.categories,
+    applyRemote,
+    onConflict,
+    enabled: loaded,
+  });
 
-  /* ── 渲染 Markdown + 标注 ── */
-  const renderHtml = useCallback((md: string, annotations: Annotation[]) => {
-    let html = marked.parse(md || '', { breaks: true, gfm: true }) as string;
-    html = sanitize(html);
-    const sorted = [...annotations].sort((a, b) => b.text.length - a.text.length);
-    for (const anno of sorted) {
-      if (!anno.text) continue;
-      const parts = html.split(/(<[^>]+>)/g);
-      for (let i = 0; i < parts.length; i++) {
-        if (parts[i].startsWith('<') && parts[i].endsWith('>')) continue;
-        if (parts[i].includes(anno.text)) {
-          parts[i] = parts[i].replace(
-            new RegExp(escapeReg(anno.text), 'g'),
-            `<span class="bri-highlight" data-anno="${anno.id}">${anno.text}</span>`,
-          );
-        }
-      }
-      html = parts.join('');
-    }
-    return html;
-  }, [sanitize]);
-
-  const onMouseUp = useCallback(() => {
-    const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || !renderRef.current) { setSelection(''); return; }
-    const text = sel.toString().trim();
-    if (!text || text.length > 200) { setSelection(''); return; }
-    const node = sel.anchorNode;
-    if (node && renderRef.current.contains(node)) setSelection(text);
-    else setSelection('');
-  }, []);
-
-  const addAnnotation = useCallback(() => {
-    if (!active || !selection) return;
-    const note = window.prompt(`为「${selection}」写一条笔记：`);
-    if (!note) return;
-    const annotation: Annotation = { id: genId(), text: selection, note };
-    patchDoc(active.id, { annotations: [...(active.annotations || []), annotation] });
-    setSelection('');
-    window.getSelection()?.removeAllRanges();
-  }, [active, selection, patchDoc]);
-
-  const clickHighlight = useCallback((e: React.MouseEvent) => {
-    const el = (e.target as HTMLElement).closest('[data-anno]');
-    if (!el || !active) return;
-    const anno = (active.annotations || []).find(a => a.id === el.getAttribute('data-anno'));
-    if (anno) window.alert(anno.note);
-  }, [active]);
-
+  /* ── 文档操作 ── */
   const createDoc = useCallback(() => {
     const doc: CapsuleDoc = {
       id: genId(),
-      title: '未命名文档',
-      category: categories[0] || 'General',
+      title: 'New Note',
+      category: state.categories.includes('General') ? 'General' : state.categories[0] || 'General',
       tags: [],
       question: '',
       answer: '',
       annotations: [],
       updatedAt: Date.now(),
     };
-    setDocs(prev => [doc, ...prev]);
-    setActiveId(doc.id);
-    setMode('edit');
+    setState((prev) => ({
+      ...prev,
+      docs: [doc, ...prev.docs],
+      activeDocId: doc.id,
+      ui: { ...prev.ui, mode: 'edit', globalMode: false },
+    }));
     setMobileSidebar(false);
-  }, [categories]);
+  }, [state.categories]);
+
+  const openDoc = useCallback((id: string) => {
+    setState((prev) => ({
+      ...prev,
+      activeDocId: id,
+      ui: { ...prev.ui, mode: prev.ui.mode === 'edit' ? 'view' : prev.ui.mode, globalMode: false },
+    }));
+    setMobileSidebar(false);
+    setSelection(null);
+    setDrawerOpen(false);
+  }, []);
 
   const deleteDoc = useCallback(() => {
-    if (!active) return;
-    if (!window.confirm(`删除「${active.title || '未命名文档'}」？`)) return;
-    setDocs(prev => prev.filter(d => d.id !== active.id));
-    setActiveId(null);
-    setMode('view');
-  }, [active]);
-
-  const exportFile = useCallback(() => {
-    const blob = new Blob([JSON.stringify({ docs, categories, activeDocId: activeId, ui: { mode: 'view' } }, null, 2)], {
-      type: 'application/json',
+    const doc = stateRef.current.docs.find((d) => d.id === stateRef.current.activeDocId);
+    if (!doc) return;
+    if (!window.confirm('Are you sure you want to delete this document?')) return;
+    setState((prev) => {
+      const docs = prev.docs.filter((d) => d.id !== prev.activeDocId);
+      return { ...prev, docs, activeDocId: docs[0]?.id ?? null, ui: { ...prev.ui, mode: 'view' } };
     });
+    setSelection(null);
+    setDrawerOpen(false);
+  }, []);
+
+  const setMode = useCallback((mode: CapsuleMode) => {
+    setState((prev) => ({ ...prev, ui: { ...prev.ui, mode, globalMode: false } }));
+    setSelection(null);
+    setEditingAnnotationId(null);
+    setAnnotationDraft('');
+    setDrawerOpen(false);
+  }, []);
+
+  /* ── 标注 ── */
+  const startAnnotation = useCallback(() => {
+    if (!selection) return;
+    setEditingAnnotationId(null);
+    setEditingText(selection.text);
+    setAnnotationDraft('');
+    setDrawerOpen(true);
+    setSelection(null);
+  }, [selection]);
+
+  const editAnnotation = useCallback(
+    (id: string) => {
+      const anno = (active?.annotations || []).find((a) => a.id === id);
+      if (!anno) return;
+      setEditingAnnotationId(id);
+      setEditingText(anno.text);
+      setAnnotationDraft(anno.note);
+      setDrawerOpen(true);
+    },
+    [active],
+  );
+
+  const saveAnnotation = useCallback(() => {
+    if (!active || !annotationDraft.trim()) return;
+    setState((prev) => ({
+      ...prev,
+      docs: prev.docs.map((d) => {
+        if (d.id !== active.id) return d;
+        const annotations = editingAnnotationId
+          ? (d.annotations || []).map((a) => (a.id === editingAnnotationId ? { ...a, note: annotationDraft } : a))
+          : [...(d.annotations || []), { id: genId(), text: editingText, note: annotationDraft }];
+        return { ...d, annotations, updatedAt: Date.now() };
+      }),
+    }));
+    setEditingAnnotationId(null);
+    setAnnotationDraft('');
+    setEditingText('');
+  }, [active, annotationDraft, editingAnnotationId, editingText]);
+
+  const deleteAnnotation = useCallback(
+    (id: string) => {
+      if (!active) return;
+      setState((prev) => ({
+        ...prev,
+        docs: prev.docs.map((d) =>
+          d.id === active.id
+            ? { ...d, annotations: (d.annotations || []).filter((a) => a.id !== id), updatedAt: Date.now() }
+            : d,
+        ),
+      }));
+      if (editingAnnotationId === id) {
+        setEditingAnnotationId(null);
+        setAnnotationDraft('');
+      }
+    },
+    [active, editingAnnotationId],
+  );
+
+  const handleHighlight = useCallback(
+    (id: string) => {
+      if (stateRef.current.ui.mode === 'note') {
+        editAnnotation(id);
+      } else {
+        setDrawerOpen(true);
+        setFocusNoteId(null);
+        requestAnimationFrame(() => setFocusNoteId(id));
+      }
+    },
+    [editAnnotation],
+  );
+
+  /* ── 分类 ── */
+  const handleAddCategory = useCallback((name: string) => {
+    const res = addCategoryTo(stateRef.current, name);
+    setCategoryError(res.error || '');
+    if (!res.error) setState(res.state);
+  }, []);
+
+  const handleRenameCategory = useCallback((from: string, to: string) => {
+    const res = renameCategoryIn(stateRef.current, from, to);
+    setCategoryError(res.error || '');
+    if (!res.error && res.state !== stateRef.current) setState(res.state);
+  }, []);
+
+  const handleDeleteCategory = useCallback((name: string) => {
+    if (!window.confirm(`Delete category "${name}"? \n\nFiles in this category will be moved to "General".`)) return;
+    setState((prev) => deleteCategoryFrom(prev, name));
+  }, []);
+
+  /* ── 导入 / 导出 ── */
+  const exportBri = useCallback(() => {
+    const data = JSON.stringify(stateRef.current, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `vibe-craft-${new Date().toISOString().slice(0, 10)}.bri`;
+    a.download = `bri-library-v2-${new Date().toISOString().slice(0, 10)}.bri`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     URL.revokeObjectURL(a.href);
-  }, [docs, categories, activeId]);
+  }, []);
 
-  const importFile = useCallback(async (file: File) => {
+  const importBri = useCallback(async (file: File) => {
     try {
       const parsed = JSON.parse(await file.text());
-      const incoming: CapsuleDoc[] = Array.isArray(parsed.docs) ? parsed.docs : [];
-      let added = 0;
-      let updated = 0;
-      let skipped = 0;
-      setDocs(prev => {
-        const byId = new Map(prev.map(d => [d.id, d]));
-        const next = [...prev];
-        for (const doc of incoming) {
-          if (!doc || !doc.id) { skipped++; continue; }
-          const cur = byId.get(doc.id);
-          if (!cur) { next.push(doc); byId.set(doc.id, doc); added++; }
-          else if (Number(doc.updatedAt || 0) > Number(cur.updatedAt || 0)) {
-            Object.assign(cur, doc);
-            updated++;
-          } else skipped++;
-        }
-        return next;
-      });
-      if (Array.isArray(parsed.categories)) {
-        setCategories(prev => [...new Set([...prev, ...parsed.categories])].sort());
+      if (!Array.isArray(parsed.docs)) throw new Error('no docs');
+      const backupKey = backupKeyNow();
+      try {
+        window.localStorage.setItem(backupKey, JSON.stringify(stateRef.current));
+      } catch {
+        /* 存储满时仍然允许导入，只是不留备份 */
       }
-      window.alert(`合并完成：新增 ${added}，更新 ${updated}，跳过 ${skipped}`);
+      const res = mergeImport(stateRef.current, parsed);
+      setState(res.state);
+      window.alert(
+        `合并完成：新增 ${res.added} 篇，更新 ${res.updated} 篇，跳过 ${res.skipped} 篇。\n导入前的数据已备份到 localStorage（${backupKey}）。`,
+      );
     } catch {
-      window.alert('文件格式不正确');
+      window.alert('Invalid file.');
     }
   }, []);
 
-  const statusText: Record<string, string> = {
-    off: '同步未启用',
-    idle: '已同步',
-    syncing: '同步中…',
-    error: '同步失败',
-    'login-required': '需要登录',
-  };
+  const exportMarkdown = useCallback(() => {
+    const doc = stateRef.current.docs.find((d) => d.id === stateRef.current.activeDocId);
+    if (!doc) return;
+    const md = exportMarkdownText(doc);
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(doc.title || 'untitled').replace(/\s+/g, '_')}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  }, []);
+
+  const restoreConflict = useCallback((local: CapsuleDoc) => {
+    const copy: CapsuleDoc = {
+      ...local,
+      id: 'restored-' + genId(),
+      title: (local.title || 'Untitled') + ' · 恢复',
+      updatedAt: Date.now(),
+    };
+    setState((prev) => ({ ...prev, docs: [...prev.docs, copy] }));
+    sync.clearConflicts();
+    void sync.syncNow();
+  }, [sync]);
+
+  const showToast = useCallback((text: string) => {
+    setToast(text);
+    setTimeout(() => setToast(''), 2500);
+  }, []);
+
+  /* ── 渲染 ── */
+  const mode = state.ui.mode;
+  const globalMode = state.ui.globalMode;
+  const zenMode = state.ui.zenMode;
+  const sidebarVisible = state.ui.sidebarOpen;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#eef1ff] text-slate-900">
-      <style>{`
-        /* 窄屏：侧栏改为覆盖式抽屉，桌面（≥1024px）保持原布局 */
-        @media (max-width: 1023.98px) {
-          #capsule-sidebar {
-            position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
-            width: 18rem !important; transform: translateX(-100%);
-            transition: transform .3s ease; box-shadow: 0 24px 60px -20px rgba(15,23,42,.4);
-          }
-          #capsule-sidebar.mobile-open { transform: translateX(0); }
-        }
-      `}</style>
+    <div className={`capsule-root relative flex h-screen overflow-hidden text-slate-800 ${zenMode ? 'is-zen' : ''}`}>
+      <Script
+        src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"
+        strategy="afterInteractive"
+        onLoad={() => setKatexReady(true)}
+      />
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+
+      <div className="ambient-light" aria-hidden>
+        <div className="blob blob-1" />
+        <div className="blob blob-2" />
+        <div className="blob blob-3" />
+      </div>
+
       {/* 侧栏 */}
-      <aside id="capsule-sidebar" className={`${sidebarOpen ? 'w-72' : 'w-0'} ${mobileSidebar ? 'mobile-open' : ''} shrink-0 overflow-hidden border-r border-white/60 bg-white/45 backdrop-blur-xl transition-all duration-300`}>
-        <div className="flex h-16 items-center justify-between border-b border-white/60 px-4">
-          <div className="flex items-center gap-2.5 font-bold">
-            <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-sm text-white shadow-lg shadow-indigo-500/30">✦</span>
+      <aside
+        id="capsule-sidebar"
+        className={`${sidebarVisible ? 'lg:w-80' : 'lg:w-0'} ${mobileSidebar ? 'mobile-open' : ''} z-30 flex w-80 shrink-0 flex-col overflow-hidden border-r border-white/60 bg-white/75 backdrop-blur-xl transition-all duration-300 ${zenMode ? 'lg:w-0' : ''}`}
+      >
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/50 px-5">
+          <div className="flex select-none items-center gap-3 text-lg font-bold tracking-tight">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30">
+              <Icon name="logo" className="h-5 w-5" />
+            </span>
             Prompt Capsule
           </div>
-          <button onClick={createDoc} className="grid h-8 w-8 place-items-center rounded-lg border border-white/70 bg-white/60 text-indigo-600 hover:bg-white" title="新建文档">＋</button>
+          <button
+            onClick={createDoc}
+            className="grid h-8 w-8 place-items-center rounded-lg border border-white/60 bg-white/50 text-indigo-600 shadow-sm transition hover:bg-white"
+            title="New Document"
+          >
+            <Icon name="plus" className="h-4 w-4" />
+          </button>
         </div>
 
-        <div className="space-y-2.5 border-b border-white/60 p-3">
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="搜索标题或内容…"
-            className="w-full rounded-xl border border-white/70 bg-white/60 px-3 py-2 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
-          />
-          <div className="flex gap-2">
-            <select
-              value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
-              className="min-w-0 flex-1 rounded-xl border border-white/70 bg-white/60 px-2 py-2 text-sm outline-none"
-            >
-              <option value="">全部分类</option>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <select
-              value={tagFilter}
-              onChange={e => setTagFilter(e.target.value)}
-              className="min-w-0 flex-1 rounded-xl border border-white/70 bg-white/60 px-2 py-2 text-sm outline-none"
-            >
-              <option value="">全部标签</option>
-              {allTags.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+        <div className="shrink-0 space-y-2.5 border-b border-white/50 p-4">
+          <div className="relative">
+            <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={state.ui.searchQuery}
+              onChange={(e) => patchUI({ searchQuery: e.target.value })}
+              placeholder="Search topics..."
+              className="w-full rounded-xl border border-white/60 bg-white/40 py-2.5 pl-9 pr-3 text-sm outline-none backdrop-blur transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+            />
           </div>
-        </div>
-
-        <div className="h-[calc(100vh-16rem)] space-y-2 overflow-y-auto p-3">
-          {filtered.length === 0 && <p className="px-2 py-6 text-center text-xs text-slate-400">没有匹配的文档</p>}
-          {filtered.map(d => (
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <select
+                value={state.ui.searchCategory}
+                onChange={(e) => patchUI({ searchCategory: e.target.value })}
+                className="w-full appearance-none rounded-xl border border-white/60 bg-white/40 py-2 pl-3 pr-8 text-sm text-slate-600 outline-none backdrop-blur focus:ring-2 focus:ring-indigo-100"
+              >
+                <option value="">All Categories</option>
+                {state.categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <Icon name="chevronDown" className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+            </div>
             <button
-              key={d.id}
-              onClick={() => { setActiveId(d.id); setMode('view'); setMobileSidebar(false); }}
-              className={`w-full rounded-xl border p-3 text-left transition ${d.id === activeId ? 'border-indigo-200 bg-white shadow-sm' : 'border-transparent bg-white/40 hover:bg-white/70'}`}
+              onClick={() => { setCategoryModalOpen(true); setCategoryError(''); }}
+              className="rounded-xl border border-white/60 bg-white/40 px-2.5 py-1.5 text-slate-500 shadow-sm backdrop-blur transition hover:bg-white hover:text-indigo-600"
+              title="Manage Categories"
             >
-              <div className="truncate text-sm font-semibold text-slate-800">{d.title || '未命名文档'}</div>
-              <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
-                <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-600">{d.category}</span>
-                <span>{(d.annotations || []).length} 条标注</span>
-              </div>
+              <Icon name="gear" className="h-4 w-4" />
             </button>
-          ))}
+          </div>
+          <div className="relative">
+            <select
+              value={state.ui.searchTag}
+              onChange={(e) => patchUI({ searchTag: e.target.value })}
+              className="w-full appearance-none rounded-xl border border-white/60 bg-white/40 py-2 pl-8 pr-8 text-sm text-slate-600 outline-none backdrop-blur focus:ring-2 focus:ring-indigo-100"
+            >
+              <option value="">All Tags</option>
+              {tags.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <Icon name="tag" className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+            <Icon name="chevronDown" className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+          </div>
+          <label className="flex select-none items-center gap-2 pl-1 text-[11px] text-slate-500">
+            <input
+              type="checkbox"
+              checked={state.ui.deepSearch}
+              onChange={(e) => patchUI({ deepSearch: e.target.checked })}
+              className="rounded border-slate-300"
+            />
+            同时搜索正文
+          </label>
         </div>
 
-        <div className="border-t border-white/60 p-3">
-          <div className="flex gap-2">
-            <button onClick={() => fileRef.current?.click()} className="flex-1 rounded-lg border border-white/70 bg-white/60 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white">导入</button>
-            <button onClick={exportFile} className="flex-1 rounded-lg border border-white/70 bg-white/60 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white">导出</button>
+        <div className="flex-1 space-y-2 overflow-y-auto p-3">
+          {filtered.length === 0 && <div className="py-4 text-center text-xs text-slate-400">No results found.</div>}
+          {filtered.map((doc) => {
+            const isActive = doc.id === state.activeDocId && !globalMode;
+            return (
+              <button
+                key={doc.id}
+                onClick={() => openDoc(doc.id)}
+                className={`group w-full rounded-xl border p-3 text-left transition-all ${
+                  isActive
+                    ? 'border-white bg-white shadow-sm ring-1 ring-indigo-100'
+                    : 'border-transparent bg-transparent hover:border-white/40 hover:bg-white/40'
+                }`}
+              >
+                <div className={`mb-1 flex items-start justify-between ${isActive ? 'text-indigo-600' : 'text-slate-700'}`}>
+                  <span className="flex-1 truncate pr-2 text-sm font-medium">{doc.title || 'Untitled'}</span>
+                </div>
+                <div className="mb-1 flex items-center gap-2">
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                      isActive ? 'border border-indigo-100 bg-indigo-50 text-indigo-600' : 'bg-slate-100/60 text-slate-500'
+                    }`}
+                  >
+                    {doc.category}
+                  </span>
+                  <span className="ml-auto text-[10px] text-slate-400">
+                    {new Date(doc.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+                {(doc.tags || []).length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {(doc.tags || []).map((t) => (
+                      <span key={t} className="rounded-md border border-white/50 bg-white/60 px-1.5 py-0.5 text-[9px] text-slate-500">
+                        #{t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="shrink-0 border-t border-white/50 bg-white/30 p-4 backdrop-blur">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="flex items-center justify-center gap-2 rounded-lg border border-white/60 bg-white/50 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-white hover:shadow-sm"
+            >
+              <Icon name="upload" className="h-3.5 w-3.5" /> Import
+            </button>
+            <button
+              onClick={exportBri}
+              className="flex items-center justify-center gap-2 rounded-lg border border-white/60 bg-white/50 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-white hover:shadow-sm"
+            >
+              <Icon name="download" className="h-3.5 w-3.5" /> Save
+            </button>
           </div>
-          <input ref={fileRef} type="file" accept=".bri,.json" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ''; }} />
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".bri,.json,.txt"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void importBri(f);
+              e.target.value = '';
+            }}
+          />
+          <button
+            onClick={() => setSyncModalOpen(true)}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/60 bg-white/50 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-white hover:shadow-sm"
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                sync.status === 'idle'
+                  ? 'bg-emerald-400'
+                  : sync.status === 'syncing'
+                    ? 'animate-pulse bg-indigo-400'
+                    : sync.status === 'error'
+                      ? 'bg-red-400'
+                      : sync.status === 'login-required'
+                        ? 'bg-amber-400'
+                        : 'bg-slate-300'
+              }`}
+            />
+            {STATUS_TEXT[sync.status] || sync.status}
+          </button>
         </div>
       </aside>
 
       {mobileSidebar && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[1px] lg:hidden"
-          onClick={() => setMobileSidebar(false)}
-        />
+        <div className="fixed inset-0 z-20 bg-slate-900/40 backdrop-blur-[1px] lg:hidden" onClick={() => setMobileSidebar(false)} />
       )}
 
       {/* 主区 */}
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-white/60 bg-white/40 px-3 py-2 backdrop-blur-xl lg:h-16 lg:flex-nowrap lg:gap-3 lg:px-4 lg:py-0">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
+      <main className="relative flex min-w-0 flex-1 flex-col">
+        <header
+          className={`glass-header z-20 flex shrink-0 flex-col transition-all duration-500 lg:h-16 lg:flex-row lg:items-center lg:justify-between lg:px-6 lg:py-0 ${zenMode ? 'pointer-events-none -translate-y-full opacity-0' : ''}`}
+        >
+          <div className="flex min-w-0 items-center gap-1.5 px-2 pt-2 sm:gap-2 lg:flex-1 lg:px-0 lg:pt-0">
             <button
               onClick={() => {
-                setMobileSidebar((v) => !v);
-                setSidebarOpen((v) => !v);
+                if (window.innerWidth < 1024) setMobileSidebar((v) => !v);
+                else patchUI({ sidebarOpen: !sidebarVisible });
               }}
               aria-label="切换侧栏"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-white/60 lg:h-8 lg:w-8"
-              title="切换侧栏"
+              className="-ml-1 grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-indigo-50/60 hover:text-indigo-600 lg:h-9 lg:w-9"
+              title="Toggle Sidebar"
             >
-              ☰
+              <Icon name="menu" className="h-5 w-5" />
             </button>
-            <h1 className="min-w-0 truncate text-lg font-bold">{active?.title || 'Prompt Capsule'}</h1>
-            {active && <span className="hidden rounded bg-indigo-50 px-2 py-0.5 text-[11px] text-indigo-600 sm:inline">{active.category}</span>}
+
+            {globalMode && (
+              <button
+                onClick={() => patchUI({ globalMode: false })}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 transition hover:bg-white/60 hover:text-slate-800 lg:h-9 lg:w-9"
+                title="Back to Editor"
+              >
+                <Icon name="arrowLeft" className="h-5 w-5" />
+              </button>
+            )}
+
+            {globalMode ? (
+              <div className="flex min-w-0 items-center gap-2 text-base font-bold text-slate-700 lg:gap-3 lg:text-lg">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-indigo-100 text-indigo-600">
+                  <Icon name="grid" className="h-4 w-4" />
+                </span>
+                <span className="truncate">Library Explorer</span>
+              </div>
+            ) : (
+              <div className="min-w-0 flex-1">
+                <input
+                  value={active?.title || ''}
+                  onChange={(e) => active && patchDoc(active.id, { title: e.target.value })}
+                  placeholder="Untitled Document"
+                  className="w-full truncate border-none bg-transparent text-base font-bold tracking-tight text-slate-800 outline-none placeholder:text-slate-300 lg:text-xl"
+                />
+                {active && (
+                  <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-slate-400">
+                    <span className="shrink-0 rounded border border-slate-200/50 bg-slate-100/60 px-2 py-0.5 text-slate-600">{active.category}</span>
+                    <span className="hidden shrink-0 items-center gap-1 md:flex">
+                      {(active.tags || []).map((t) => (
+                        <span key={t} className="rounded-md border border-white bg-white/50 px-1.5 py-0.5 text-[10px] text-slate-500">
+                          #{t}
+                        </span>
+                      ))}
+                    </span>
+                    <span className="hidden h-1 w-1 shrink-0 rounded-full bg-slate-300 md:block" />
+                    <span className="truncate">Last edited {new Date(active.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <span className="hidden items-center gap-1.5 text-[11px] text-slate-500 sm:flex">
-              <span className={`h-2 w-2 rounded-full ${sync.status === 'idle' ? 'bg-emerald-400' : sync.status === 'syncing' ? 'animate-pulse bg-indigo-400' : sync.status === 'error' ? 'bg-red-400' : sync.status === 'login-required' ? 'bg-amber-400' : 'bg-slate-300'}`} />
-              {statusText[sync.status]}
-            </span>
-            <button onClick={sync.syncNow} className="min-h-10 rounded-lg border border-slate-200 bg-white/70 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-indigo-300 hover:text-indigo-600 lg:min-h-0">同步</button>
-            <div className="flex rounded-xl border border-slate-200 bg-white/70 p-0.5">
-              <button onClick={() => setMode('view')} className={`min-h-9 rounded-lg px-2.5 py-1 text-xs font-semibold lg:min-h-0 ${mode === 'view' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>查看</button>
-              <button onClick={() => setMode('edit')} className={`min-h-9 rounded-lg px-2.5 py-1 text-xs font-semibold lg:min-h-0 ${mode === 'edit' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>编辑</button>
-            </div>
-            <button onClick={deleteDoc} className="min-h-10 rounded-lg px-2 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 lg:min-h-0">删除</button>
+
+          <div className="flex items-center gap-1 overflow-x-auto px-2 pb-2 pt-1.5 lg:shrink-0 lg:gap-3 lg:overflow-visible lg:px-0 lg:pb-0 lg:pt-0">
+            {!globalMode && (
+              <div className="flex shrink-0 rounded-xl border border-white/60 bg-slate-100/50 p-1 backdrop-blur">
+                {([
+                  ['view', 'View', 'book'],
+                  ['note', 'Note', 'highlighter'],
+                  ['edit', 'Edit', 'pencil'],
+                ] as const).map(([key, label, icon]) => (
+                  <button
+                    key={key}
+                    onClick={() => setMode(key)}
+                    className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-all sm:px-2.5 sm:text-sm ${
+                      mode === key ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:bg-white/40 hover:text-slate-900'
+                    }`}
+                  >
+                    <Icon name={icon as IconName} className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <span className="hidden sm:inline">{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="hidden h-6 w-px shrink-0 bg-slate-200/60 lg:block" />
+
+            {!globalMode && (
+              <button
+                onClick={() => { patchUI({ globalMode: true }); setDrawerOpen(false); }}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 transition hover:bg-white/50 hover:text-indigo-600"
+                title="Library View"
+              >
+                <Icon name="grid" className="h-5 w-5" />
+              </button>
+            )}
+
+            {!globalMode && (
+              <div className="flex shrink-0 items-center gap-0.5">
+                <button
+                  onClick={() => patchUI({ zenMode: true })}
+                  className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 transition hover:bg-white/50 hover:text-indigo-600"
+                  title="Zen Mode (Focus)"
+                >
+                  <Icon name="expand" className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={exportMarkdown}
+                  className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 transition hover:bg-white/50 hover:text-slate-700"
+                  title="Export Hyperlinked Markdown"
+                >
+                  <Icon name="fileText" className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => setHistoryOpen(true)}
+                  className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 transition hover:bg-white/50 hover:text-indigo-600"
+                  title="Version History"
+                >
+                  <Icon name="clock" className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={deleteDoc}
+                  className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 transition hover:bg-red-50/50 hover:text-red-600"
+                  title="Delete Document"
+                >
+                  <Icon name="trash" className="h-5 w-5" />
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8">
-          {!active && (
-            <div className="mx-auto mt-24 max-w-md text-center text-slate-400">
-              <div className="mb-3 text-4xl">✦</div>
-              <p className="text-sm">左侧还没有文档，点 + 新建一篇。</p>
-            </div>
-          )}
+        {globalMode ? (
+          <LibraryGrid docs={filtered} onOpen={openDoc} onCreate={createDoc} />
+        ) : !active ? (
+          <div className="flex flex-1 flex-col items-center justify-center text-slate-400">
+            <div className="mb-3 text-4xl">✦</div>
+            <p className="mb-4 text-sm">还没有文档。</p>
+            <button onClick={createDoc} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-200">
+              新建文档
+            </button>
+          </div>
+        ) : mode === 'edit' ? (
+          <EditorPane
+            doc={active}
+            categories={state.categories}
+            onChange={(changes) => patchDoc(active.id, changes)}
+            onManageCategories={() => { setCategoryModalOpen(true); setCategoryError(''); }}
+          />
+        ) : (
+          <PreviewPane
+            doc={active}
+            mode={mode}
+            sanitize={sanitize}
+            katexReady={katexReady}
+            onSelect={setSelection}
+            onHighlight={handleHighlight}
+          />
+        )}
 
-          {active && mode === 'view' && (
-            <div className="mx-auto max-w-3xl space-y-6" ref={renderRef} onMouseUp={onMouseUp}>
-              {selection && (
-                <div className="sticky top-0 z-10 flex items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
-                  <span className="min-w-0 truncate text-slate-600">已选中：{selection}</span>
-                  <button onClick={addAnnotation} className="ml-3 shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 font-semibold text-white">添加标注</button>
-                </div>
-              )}
+        {/* 选中文字后的浮动按钮 */}
+        {mode === 'note' && selection && !zenMode && (
+          <button
+            onClick={startAnnotation}
+            style={{ top: Math.max(12, selection.top - 56), left: selection.left }}
+            className="fixed z-[60] -translate-x-1/2 rounded-full border border-white/10 bg-slate-800/90 px-4 py-2 text-sm font-semibold text-white shadow-xl backdrop-blur transition hover:bg-slate-900"
+          >
+            <Icon name="highlighter" className="mr-1.5 h-4 w-4 text-yellow-400" /> Annotate Text
+          </button>
+        )}
 
-              <section className="rounded-2xl border border-white/80 bg-white/75 p-6 shadow-sm">
-                <div className="mb-3 text-[11px] font-bold uppercase tracking-widest text-indigo-400">Context / Question</div>
-                <div className="prose-capsule" onClick={clickHighlight} dangerouslySetInnerHTML={{ __html: renderHtml(active.question, active.annotations) }} />
-              </section>
-
-              <section className="rounded-2xl border border-white/80 bg-white/75 p-6 shadow-sm">
-                <div className="mb-3 text-[11px] font-bold uppercase tracking-widest text-emerald-500">Analysis / Answer</div>
-                <div className="prose-capsule" onClick={clickHighlight} dangerouslySetInnerHTML={{ __html: renderHtml(active.answer, active.annotations) }} />
-              </section>
-
-              {(active.annotations || []).length > 0 && (
-                <section className="rounded-2xl border border-white/80 bg-white/60 p-5">
-                  <div className="mb-3 text-xs font-bold text-slate-600">标注（{(active.annotations || []).length}）</div>
-                  <ul className="space-y-2">
-                    {(active.annotations || []).map(a => (
-                      <li key={a.id} className="break-words rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2 text-base sm:text-sm">
-                        <span className="font-semibold text-amber-700">{a.text}</span>
-                        <span className="text-slate-600"> — {a.note}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-            </div>
-          )}
-
-          {active && mode === 'edit' && (
-            <div className="mx-auto max-w-3xl space-y-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-semibold text-slate-500">标题</span>
-                  <input
-                    value={active.title}
-                    onChange={e => patchDoc(active.id, { title: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm outline-none focus:border-indigo-300"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs font-semibold text-slate-500">分类</span>
-                  <select
-                    value={active.category}
-                    onChange={e => patchDoc(active.id, { category: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm outline-none"
-                  >
-                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </label>
-              </div>
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-slate-500">标签（逗号分隔）</span>
-                <input
-                  value={(active.tags || []).join(', ')}
-                  onChange={e => patchDoc(active.id, { tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
-                  className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm outline-none focus:border-indigo-300"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-slate-500">Question / Context（Markdown）</span>
-                <textarea
-                  value={active.question}
-                  onChange={e => patchDoc(active.id, { question: e.target.value })}
-                  rows={8}
-                  className="w-full resize-y rounded-xl border border-slate-200 bg-white/90 px-3 py-2 font-mono text-[13px] leading-relaxed outline-none focus:border-indigo-300"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-slate-500">Answer / Analysis（Markdown）</span>
-                <textarea
-                  value={active.answer}
-                  onChange={e => patchDoc(active.id, { answer: e.target.value })}
-                  rows={14}
-                  className="w-full resize-y rounded-xl border border-slate-200 bg-white/90 px-3 py-2 font-mono text-[13px] leading-relaxed outline-none focus:border-indigo-300"
-                />
-              </label>
-              <button onClick={() => setMode('view')} className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25">
-                完成
-              </button>
-            </div>
-          )}
-        </div>
-
-        <footer className="flex items-center justify-between border-t border-white/60 bg-white/40 px-4 py-2 text-[11px] text-slate-400">
-          <span>{username ? `${username} · 本地存储 + 云端同步` : "未登录 · 数据只存本地，登录后可同步"}</span>
-          <span>{sync.error ? sync.error : sync.lastSyncAt ? `上次同步 ${new Date(sync.lastSyncAt).toLocaleTimeString()}` : ''}</span>
-        </footer>
+        {zenMode && (
+          <button
+            onClick={() => patchUI({ zenMode: false })}
+            className="fixed bottom-8 right-8 z-40 flex items-center gap-2 rounded-full border border-white bg-white/85 px-4 py-2 text-sm font-bold text-slate-600 shadow-lg backdrop-blur transition hover:text-indigo-600"
+          >
+            <Icon name="cornersIn" className="h-4 w-4" /> Exit Focus
+          </button>
+        )}
       </main>
+
+      <AnnotationDrawer
+        open={drawerOpen && !!active}
+        annotations={active?.annotations || []}
+        mode={mode === 'note' ? 'note' : 'view'}
+        editingId={editingAnnotationId}
+        selectedText={editingText}
+        draft={annotationDraft}
+        focusId={focusNoteId}
+        sanitize={sanitize}
+        onChangeDraft={setAnnotationDraft}
+        onSave={saveAnnotation}
+        onCancelEdit={() => { setEditingAnnotationId(null); setAnnotationDraft(''); setEditingText(''); }}
+        onEdit={editAnnotation}
+        onDelete={deleteAnnotation}
+        onClose={() => { setDrawerOpen(false); setEditingAnnotationId(null); setAnnotationDraft(''); }}
+      />
+
+      <CategoryModal
+        open={categoryModalOpen}
+        categories={state.categories}
+        error={categoryError}
+        onAdd={handleAddCategory}
+        onRename={handleRenameCategory}
+        onDelete={handleDeleteCategory}
+        onClose={() => { setCategoryModalOpen(false); setCategoryError(''); }}
+      />
+
+      <SyncModal
+        open={syncModalOpen}
+        onClose={() => setSyncModalOpen(false)}
+        status={sync.status}
+        user={sync.user || (username ? username : null)}
+        isAdmin={isAdmin}
+        errorText={sync.error}
+        lastSyncAt={sync.lastSyncAt}
+        conflicts={sync.conflicts}
+        onClearConflicts={sync.clearConflicts}
+        onRestoreConflict={restoreConflict}
+        onSyncNow={async () => { await sync.syncNow(); }}
+        onTest={sync.testConnection}
+        onPullAll={async () => { await sync.pullAll(); }}
+      />
+
+      <HistoryModal
+        open={historyOpen}
+        doc={active}
+        onClose={() => setHistoryOpen(false)}
+        onRestored={async () => { await sync.pullAll(); showToast('已从云端恢复'); }}
+      />
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-[90] -translate-x-1/2 rounded-full bg-slate-800/90 px-4 py-2 text-xs font-medium text-white shadow-lg">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

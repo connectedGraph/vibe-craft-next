@@ -1,21 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Annotation, CapsuleDoc } from '@/lib/tools/capsule';
 
-export type Annotation = { id: string; text: string; note: string };
-
-export type CapsuleDoc = {
-  id: string;
-  title: string;
-  category: string;
-  tags: string[];
-  question: string;
-  answer: string;
-  annotations: Annotation[];
-  updatedAt: number;
-};
+export type { Annotation, CapsuleDoc };
 
 export type SyncStatus = 'off' | 'idle' | 'syncing' | 'error' | 'login-required';
+export type SyncConflict = { id: string; collection: string; at: number; local: CapsuleDoc };
 
 const CURSOR_KEY = 'vibesync:cursor:prompt-capsule';
 const SNAP_KEY = 'vibesync:snap:prompt-capsule';
@@ -61,11 +52,14 @@ export function useCapsuleSync(opts: {
   const [user, setUser] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [lastSyncAt, setLastSyncAt] = useState(0);
+  const [conflicts, setConflicts] = useState<SyncConflict[]>([]);
 
   const snapRef = useRef<Record<string, string>>({});
   const runningRef = useRef(false);
   const optsRef = useRef(opts);
-  optsRef.current = opts;
+  useEffect(() => {
+    optsRef.current = opts;
+  });
 
   useEffect(() => {
     try {
@@ -134,7 +128,13 @@ export function useCapsuleSync(opts: {
         for (const c of pushed.conflicts || []) {
           if (c.collection === 'docs') {
             const local = current.docs.find(d => d.id === c.id);
-            if (local && c.server?.data) optsRef.current.onConflict(local, c.server.data);
+            if (local && c.server?.data) {
+              optsRef.current.onConflict(local, c.server.data);
+              setConflicts(prev => [
+                ...prev.filter(x => x.id !== c.id),
+                { id: c.id, collection: c.collection, at: Date.now(), local: c.server.data ?? local },
+              ]);
+            }
           }
         }
       }
@@ -185,8 +185,24 @@ export function useCapsuleSync(opts: {
     }
   }, [persistSnap]);
 
+  const clearConflicts = useCallback(() => setConflicts([]), []);
+
+  const testConnection = useCallback(async () => {
+    const res = await api('GET', `/api/v1/sync/state?app=${APP}`);
+    return { seq: Number(res.seq) || 0, count: Number(res.count) || 0 };
+  }, []);
+
+  /** 从云端重新拉全量（用于「从备份恢复」后刷新本地）。 */
+  const pullAll = useCallback(async () => {
+    try {
+      localStorage.setItem(CURSOR_KEY, '0');
+    } catch { /* 忽略 */ }
+    await tick();
+  }, [tick]);
+
   useEffect(() => {
-    if (!opts.enabled) { setStatus('off'); return; }
+    if (!opts.enabled) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 启动同步轮询（外部系统订阅），首次立刻跑一次
     tick();
     const timer = setInterval(tick, 6000);
     const onVisible = () => { if (document.visibilityState === 'visible') tick(); };
@@ -197,7 +213,11 @@ export function useCapsuleSync(opts: {
     };
   }, [opts.enabled, tick]);
 
-  return { status, user, error, lastSyncAt, syncNow: tick };
+  // enabled=false 时对外统一显示 off（避免在 effect 里同步 setState）
+  return {
+    status: opts.enabled ? status : 'off',
+    user, error, lastSyncAt, syncNow: tick, conflicts, clearConflicts, testConnection, pullAll,
+  };
 }
 
 function getDeviceId(): string {

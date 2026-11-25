@@ -50,7 +50,7 @@ npm run dev
 | GET | `/api/v1/auth/me` | 当前身份 |
 | POST | `/api/v1/auth/password` | 改密（旧会话全部失效） |
 | GET/POST/DELETE | `/api/v1/auth/sessions` | 会话列表 / 吊销 |
-| GET/POST | `/api/v1/tokens` | API 令牌 |
+| GET/POST/DELETE | `/api/v1/admin/tokens` | 当前账号的 API 令牌（`vck_`） |
 | GET | `/api/v1/sync/state` | 游标与记录数 |
 | GET | `/api/v1/sync/pull?app=&since=` | 增量拉取（`since=0` 为全量） |
 | POST | `/api/v1/sync/push` | 增量推送 |
@@ -60,9 +60,40 @@ npm run dev
 
 同步是**记录级 LWW**：每条记录带 `id / h(内容哈希) / updatedAt / deleted`，服务端用单调 `changes.seq` 做游标；相同内容返回 `unchanged`，不产生冲突副本；真正的并发修改进冲突列表由前端选择。
 
+写接口有单进程内存限流（`src/lib/ratelimit.ts`，超限返回 429 + `Retry-After`），默认额度：push 240 次/分钟、pull 600 次/分钟、备份导入 6 次/分钟、注册与建令牌 10 次/小时。额度可用环境变量调整：
+
+| 环境变量 | 默认值 |
+|---|---|
+| `RL_SYNC_PUSH_PER_MIN` | 240 |
+| `RL_SYNC_PULL_PER_MIN` | 600 |
+| `RL_BACKUP_IMPORT_PER_MIN` | 6 |
+| `RL_AUTH_REGISTER_PER_HOUR` | 10 |
+| `RL_TOKENS_CREATE_PER_HOUR` | 10 |
+
+`RATE_LIMIT=off` 可整体关闭（自动化测试用）。请求体上限：同步 push 2MB，其余接口 8MB。
+
+## 测试
+
+```bash
+npm test           # 全部（API 契约 + 数据层纯函数）
+npm run test:api   # 只跑 API，会自己 build 并起一个临时实例
+npm run test:unit  # 只跑纯函数
+```
+
+API 测试用 `node:test` 起真实的 `next start`（内核分配端口、临时 `DATA_DIR`），不 mock 路由。详见 `tests/README.md`。
+
 ## 部署
 
 tx 上由 `systemd --user vibe-craft-next.service` 跑 `next start`，nginx 反代 `craft.6767.chat` → `127.0.0.1:8794`。
+
+```bash
+bash deploy/deploy.sh                 # 构建 → 打包 → 上传 → 备份 → 重启 → 健康检查 → 冒烟
+bash deploy/deploy.sh --dry-run       # 只看计划，零副作用
+bash deploy/deploy.sh --rollback      # 恢复最近一次服务器备份
+bash deploy/deploy.sh --help          # 全部选项
+```
+
+脚本会保留最近 5 份服务器备份（`~/workspace/projects/vibe-craft-next-backups/`），部署失败时按提示 `--rollback` 即可。手工兜底步骤：
 
 ```bash
 npm run build
@@ -72,7 +103,7 @@ scp /tmp/vcn-runtime.tar.gz tx:/tmp/
 ssh tx 'tar -C ~/workspace/projects/vibe-craft-next -xzf /tmp/vcn-runtime.tar.gz && systemctl --user restart vibe-craft-next'
 ```
 
-`public/` 必须一起传（四个静态工具、`sw.js`、manifest、图标都在里面）。
+`public/` 必须一起传（`sw.js`、manifest、图标、共享同步脚本都在里面）。
 
 ## 兼容地址
 

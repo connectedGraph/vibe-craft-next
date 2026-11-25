@@ -13,8 +13,8 @@ readonly SERVICE_NAME="vibe-craft-next"
 readonly HEALTH_TIMEOUT_SEC=60
 readonly HEALTH_INTERVAL_SEC=2
 readonly BACKUP_KEEP=5
-# 运行时需要的文件（.env.local 不在此列，永不打包）
-readonly RUNTIME_FILES=(node_modules .next public src package.json package-lock.json next.config.ts tsconfig.json)
+# 运行时需要的文件（.env.local 不在此列，永不打包）；node_modules 由 need() 判断是否追加
+readonly RUNTIME_FILES=(.next public src package.json package-lock.json next.config.ts tsconfig.json)
 # 所有 ssh/scp 都非交互
 readonly SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10)
 # 冒烟检查：路径 + 期望状态码
@@ -40,6 +40,7 @@ NO_BACKUP=0
 NO_SMOKE=0
 DRY_RUN=0
 ROLLBACK=0
+WITH_DEPS=0
 
 # ===== 运行状态 =====
 STAGE="初始化"
@@ -50,6 +51,8 @@ REMOTE_TARBALL="/tmp/vcn-runtime-${TS}-$$.tar.gz"
 REMOTE_UPLOADED=0
 BACKUP_PATH=""
 ROLLBACK_PATH=""
+# 是否随包上传 node_modules（1 是 / 0 否）：默认按 package-lock.json 是否变化自动判断
+INCLUDE_DEPS=1
 SECONDS=0
 
 # ===== 远端脚本（单引号 heredoc，参数经 bash -s -- 传入） =====
@@ -93,12 +96,16 @@ if [ ! -f "$tarball" ]; then
   exit 2
 fi
 entries=$(tar -tzf "$tarball")
-for p in .next src public node_modules; do
+for p in .next src public; do
   if ! grep -Fqx "$p/" <<<"$entries"; then
     echo "BAD_TARBALL: 缺少 $p/" >&2
     exit 3
   fi
 done
+if [ "${4:-1}" = "1" ] && ! grep -Fqx "node_modules/" <<<"$entries"; then
+  echo "BAD_TARBALL: 缺少 node_modules/" >&2
+  exit 3
+fi
 mkdir -p "$target"
 rm -rf -- "$target/.next"
 tar -C "$target" -xzf "$tarball"
@@ -197,6 +204,7 @@ vibe-craft-next 一键部署
 
 选项:
   --skip-build   复用本地已有 .next，不重新构建
+  --with-deps    强制上传 node_modules（默认按 package-lock.json 是否变化自动判断）
   --no-backup    跳过部署前的服务器备份
   --no-smoke     跳过部署后的冒烟测试（健康检查仍执行）
   --dry-run      只打印将执行的步骤和命令，不构建、不 ssh/scp（零副作用）
@@ -220,6 +228,7 @@ parse_args() {
   while (( $# )); do
     case "$1" in
       --skip-build) SKIP_BUILD=1 ;;
+      --with-deps)  WITH_DEPS=1 ;;
       --no-backup)  NO_BACKUP=1 ;;
       --no-smoke)   NO_SMOKE=1 ;;
       --dry-run)    DRY_RUN=1 ;;
@@ -267,6 +276,29 @@ need() {
     fi
     printf '  ssh %s 可达\n' "$SSH_HOST"
   fi
+  # 依赖是否要随包上传：按 package-lock.json 哈希与远端比对，避免每次传 478M
+  if (( ROLLBACK )); then
+    INCLUDE_DEPS=0
+  elif (( WITH_DEPS )); then
+    INCLUDE_DEPS=1
+    printf '  依赖: 强制上传 node_modules（--with-deps）\n'
+  elif (( DRY_RUN )); then
+    INCLUDE_DEPS=1
+    printf '  依赖: dry-run 不比对远端，计划按包含 node_modules 展示\n'
+  else
+    local local_lock remote_lock
+    local_lock="$(sha256sum package-lock.json | cut -d' ' -f1)"
+    remote_lock="$(ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
+      "cd \"\$HOME/$REMOTE_PROJECT\" 2>/dev/null && [ -d node_modules ] && sha256sum package-lock.json 2>/dev/null | cut -d' ' -f1" \
+      2>/dev/null || true)"
+    if [[ -n "$remote_lock" && "$remote_lock" == "$local_lock" ]]; then
+      INCLUDE_DEPS=0
+      printf '  依赖: package-lock.json 未变化，跳过 node_modules 上传\n'
+    else
+      INCLUDE_DEPS=1
+      printf '  依赖: package-lock.json 有变化或远端缺依赖，上传 node_modules\n'
+    fi
+  fi
   printf '  仓库根: %s\n' "$REPO_ROOT"
 }
 
@@ -289,16 +321,25 @@ build() {
 pack() {
   STAGE="打包"
   printf '\n== 打包运行时文件 ==\n'
+  local files=("${RUNTIME_FILES[@]}")
+  if (( INCLUDE_DEPS )); then
+    files=(node_modules "${files[@]}")
+  fi
   if (( DRY_RUN )); then
     TARBALL="${TMPDIR:-/tmp}/vcn-runtime-$TS.tar.gz"
-    print_cmd tar -czf "$TARBALL" --exclude=node_modules/.cache "${RUNTIME_FILES[@]}"
-    printf '  打包列表: %s\n' "${RUNTIME_FILES[*]}"
+    print_cmd tar -czf "$TARBALL" --exclude=node_modules/.cache "${files[@]}"
+    printf '  打包列表: %s\n' "${files[*]}"
     return 0
   fi
   [[ -d .next ]] || die "本地没有 .next，构建可能未完成"
   LOCAL_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vcn-deploy.XXXXXX")"
   TARBALL="$LOCAL_TMP_DIR/vcn-runtime-$TS.tar.gz"
-  tar -czf "$TARBALL" --exclude=node_modules/.cache "${RUNTIME_FILES[@]}" \
+  if (( INCLUDE_DEPS )); then
+    printf '  包含 node_modules（依赖有更新）\n'
+  else
+    printf '  跳过 node_modules（依赖未变化）\n'
+  fi
+  tar -czf "$TARBALL" --exclude=node_modules/.cache "${files[@]}" \
     || die "打包失败"
   # 安全检查：项目自身的 .env 不许进包
   local env_hits
@@ -354,11 +395,11 @@ restart() {
   STAGE="解压与重启"
   printf '\n== 解压并重启服务 ==\n'
   if (( DRY_RUN )); then
-    print_remote "$SSH_HOST" "$REMOTE_DEPLOY_SCRIPT" "$REMOTE_PROJECT" "$REMOTE_TARBALL" "$SERVICE_NAME"
+    print_remote "$SSH_HOST" "$REMOTE_DEPLOY_SCRIPT" "$REMOTE_PROJECT" "$REMOTE_TARBALL" "$SERVICE_NAME" "$INCLUDE_DEPS"
     return 0
   fi
   local out
-  if ! out="$(exec_remote "$REMOTE_DEPLOY_SCRIPT" "$REMOTE_PROJECT" "$REMOTE_TARBALL" "$SERVICE_NAME" 2>&1)"; then
+  if ! out="$(exec_remote "$REMOTE_DEPLOY_SCRIPT" "$REMOTE_PROJECT" "$REMOTE_TARBALL" "$SERVICE_NAME" "$INCLUDE_DEPS" 2>&1)"; then
     printf '%s\n' "$out" >&2
     die "服务器解压或重启服务失败（可用 --rollback 恢复上一版本）"
   fi

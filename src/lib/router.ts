@@ -9,7 +9,8 @@ import {
   type Identity,
 } from './auth';
 import { ApiError, messageOf } from './errors';
-import { fail, isSecureRequest, json, readJson } from './http';
+import { fail, isSecureRequest, json, MAX_SYNC_BODY, readJson } from './http';
+import { checkRateLimit, type RateScope } from './ratelimit';
 import { exportBackup, importBackup, restoreVersion, syncHistory, syncPull, syncPush, syncState } from './sync';
 
 type Ctx = {
@@ -25,11 +26,20 @@ type Route = {
   handler: (ctx: Ctx, match: RegExpExecArray) => unknown | Promise<unknown>;
   open?: boolean;
   admin?: boolean;
+  /** 该路由使用的限流 scope；不填则不限流 */
+  limit?: RateScope;
+  /** 该路由的请求体上限；默认 readJson 的 MAX_BODY */
+  maxBody?: number;
 };
 
 const routes: Route[] = [];
 
-function route(method: string, pattern: RegExp, handler: Route['handler'], opts: { open?: boolean; admin?: boolean } = {}) {
+function route(
+  method: string,
+  pattern: RegExp,
+  handler: Route['handler'],
+  opts: { open?: boolean; admin?: boolean; limit?: RateScope; maxBody?: number } = {},
+) {
   routes.push({ method, pattern, handler, ...opts });
 }
 
@@ -131,7 +141,7 @@ route('GET', /^\/api\/v1\/health$/, () => ({ ok: true, version: '2.1.0', time: D
 
 route('GET', /^\/api\/v1\/auth\/me$/, (ctx) => authPayload(ctx.identity), { open: true });
 route('POST', /^\/api\/v1\/auth\/login$/, handleLogin, { open: true });
-route('POST', /^\/api\/v1\/auth\/register$/, handleRegister, { open: true });
+route('POST', /^\/api\/v1\/auth\/register$/, handleRegister, { open: true, limit: 'auth:register' });
 route('POST', /^\/api\/v1\/auth\/logout$/, (ctx) => {
   const jti = jtiOfToken(parseCookie(ctx.req.headers.get('cookie'), SESSION_COOKIE));
   if (jti) revokeSessionByJti(jti);
@@ -154,8 +164,10 @@ route('GET', /^\/api\/v1\/sync\/pull$/, (ctx) => syncPull(
   ctx.url.searchParams.get('app'),
   ctx.url.searchParams.get('since'),
   ctx.url.searchParams.get('limit'),
-));
-route('POST', /^\/api\/v1\/sync\/push$/, async (ctx) => syncPush(ctx.identity.username, await ctx.body()));
+), { limit: 'sync:pull' });
+route('POST', /^\/api\/v1\/sync\/push$/, async (ctx) => syncPush(ctx.identity.username, await ctx.body()), {
+  limit: 'sync:push', maxBody: MAX_SYNC_BODY,
+});
 route('GET', /^\/api\/v1\/sync\/history$/, (ctx) => syncHistory(ctx.identity.username, {
   app: ctx.url.searchParams.get('app'),
   collection: ctx.url.searchParams.get('collection'),
@@ -165,7 +177,7 @@ route('GET', /^\/api\/v1\/sync\/history$/, (ctx) => syncHistory(ctx.identity.use
 route('POST', /^\/api\/v1\/sync\/restore$/, async (ctx) => restoreVersion(ctx.identity.username, await ctx.body()));
 
 route('GET', /^\/api\/v1\/backup\/export$/, (ctx) => exportBackup(ctx.identity.username, ctx.url.searchParams.get('app')));
-route('POST', /^\/api\/v1\/backup\/import$/, async (ctx) => importBackup(ctx.identity.username, await ctx.body()));
+route('POST', /^\/api\/v1\/backup\/import$/, async (ctx) => importBackup(ctx.identity.username, await ctx.body()), { limit: 'backup:import' });
 
 /* ───────────── 管理端 ───────────── */
 
@@ -231,7 +243,7 @@ route('GET', /^\/api\/v1\/admin\/tokens$/, (ctx) => ({ ok: true, tokens: listTok
 route('POST', /^\/api\/v1\/admin\/tokens$/, async (ctx) => {
   const body = await ctx.body();
   return { ok: true, ...createToken(ctx.identity.username, String(body.name ?? 'script').slice(0, 40)) };
-}, { admin: true });
+}, { admin: true, limit: 'tokens:create' });
 route('DELETE', /^\/api\/v1\/admin\/tokens\/(\d+)$/, (ctx, m) => ({ ok: revokeToken(ctx.identity.username, Number(m[1])) }), { admin: true });
 
 /* ───────────── dispatch ───────────── */
@@ -254,9 +266,11 @@ export async function dispatch(req: Request, pathname: string, url: URL): Promis
       req,
       url,
       identity: identity as Identity,
-      body: () => readJson(req),
+      body: () => readJson(req, r.maxBody),
     };
     try {
+      // 限流放在读 body / 查库之前，且异常统一走 fail() 转成 429 JSON。
+      if (r.limit) checkRateLimit(r.limit, req, identity?.username);
       const out = await r.handler(ctx, m);
       return out instanceof NextResponse ? out : json(out);
     } catch (err) {

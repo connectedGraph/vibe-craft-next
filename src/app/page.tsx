@@ -4,8 +4,6 @@ import { authConfig, ensureSeedOnce, findUser, getMode, identityFromCookies } fr
 
 export const dynamic = "force-dynamic";
 
-  ensureSeedOnce();
-
 const tools = [
   {
     href: "/prompt-capsule",
@@ -16,28 +14,36 @@ const tools = [
     tag: "React",
   },
   {
-    href: "/legacy/contextly/index.html",
+    href: "/contextly/index.html",
     name: "Contextly",
     desc: "带上下文的词汇积累：生词、当前句、前后句一起记。",
     icon: "🔤",
     react: false,
-    tag: "迁移中",
+    tag: "本地",
   },
   {
-    href: "/legacy/expressing/index.html",
+    href: "/expressing/index.html",
     name: "Expressing",
     desc: "中文 → 地道英文：初稿与润色后表达左右对比。",
     icon: "⇄",
     react: false,
-    tag: "迁移中",
+    tag: "本地",
   },
   {
-    href: "/legacy/desktop-lite/index.html",
+    href: "/desktop-lite/index.html",
     name: "Desktop Lite",
     desc: "Aura PKM：剪贴板、日志、索引和极简专注工作台。",
     icon: "🗂",
     react: false,
-    tag: "迁移中",
+    tag: "本地",
+  },
+  {
+    href: "/adhd-text/index.html",
+    name: "ADHD Text",
+    desc: "阅读排版实验室：对阅读障碍友好的字体、标尺与专注辅助。",
+    icon: "📐",
+    react: false,
+    tag: "本地",
   },
 ];
 
@@ -93,7 +99,7 @@ export default async function Home() {
                   <div className="grid h-12 w-12 place-items-center rounded-2xl bg-indigo-500/10 text-2xl text-indigo-300">
                     {tool.icon}
                   </div>
-                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${tool.react ? "bg-emerald-400/10 text-emerald-300" : "bg-amber-400/10 text-amber-300"}`}>
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${tool.react ? "bg-emerald-400/10 text-emerald-300" : "bg-slate-400/10 text-slate-300"}`}>
                     {tool.tag}
                   </span>
                 </div>
@@ -112,7 +118,7 @@ export default async function Home() {
         </div>
 
         <p className="mt-10 text-center text-[11px] text-slate-600">
-          Prompt Capsule 已迁移到 React；其余工具正在迁移，暂时通过 /legacy 访问旧版。
+          所有工具都由同一个 Next.js 服务托管；数据默认存本地，登录后自动多设备同步。
         </p>
       </div>
     </main>

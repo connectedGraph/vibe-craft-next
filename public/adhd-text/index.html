@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>专业阅读排版与视觉测试实验室</title>
+    <!-- 引入 Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入专业易读字体库 -->
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* 针对阅读障碍设计的专业字体 OpenDyslexic (从公开源加载) */
+        @font-face {
+            font-family: 'OpenDyslexic';
+            src: url('https://cdn.jsdelivr.net/npm/opendyslexic@3.0.0/woff/OpenDyslexic-Regular.woff') format('woff');
+        }
+
+        :root {
+            --paper-bg: #ffffff;
+            --paper-text: #1a1a1a;
+        }
+
+        body {
+            font-family: 'Lexend', 'Noto Sans SC', sans-serif;
+        }
+
+        /* 阅读纸张样式 */
+        #paper {
+            background-color: var(--paper-bg);
+            color: var(--paper-text);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* 阅读辅助线 (Ruler) */
+        #ruler {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 1.5em;
+            background-color: rgba(59, 130, 246, 0.15);
+            border-top: 1px solid rgba(59, 130, 246, 0.3);
+            border-bottom: 1px solid rgba(59, 130, 246, 0.3);
+            pointer-events: none;
+            display: none;
+            z-index: 10;
+        }
+
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* 隐藏 Tab 内容 */
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* 范围选择器美化 */
+        input[type="range"] {
+            -webkit-appearance: none;
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 5px;
+            accent-color: #3b82f6;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 h-screen flex flex-col overflow-hidden">
+
+    <!-- 顶部 Header -->
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shrink-0 shadow-sm z-20">
+        <div class="flex items-center space-x-3">
+            <div class="bg-blue-600 p-2 rounded-lg">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+            </div>
+            <h1 class="text-xl font-bold text-slate-800 tracking-tight">Typography Lab <span class="text-slate-400 font-light ml-2 text-sm">v2.0</span></h1>
+        </div>
+        <button onclick="exportSettings()" class="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2 rounded-full text-sm font-medium transition flex items-center shadow-lg active:scale-95">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16a2 2 0 012-2h4a2 2 0 012 2v2H8v-2z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path></svg>
+            导出 CSS 配置
+        </button>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- 左侧控制面板 -->
+        <aside class="w-80 bg-white border-r border-slate-200 overflow-y-auto p-6 space-y-8 shrink-0 shadow-xl z-10">
+            
+            <!-- 预设选择器 -->
+            <section>
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center">
+                    <span class="mr-2">Presets</span>
+                    <div class="h-px flex-1 bg-slate-100"></div>
+                </h3>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="applyPreset('default')" class="px-3 py-2 text-xs font-medium border border-slate-200 rounded-md hover:border-blue-400 hover:text-blue-600 transition">标准模式</button>
+                    <button onclick="applyPreset('dyslexia')" class="px-3 py-2 text-xs font-medium border border-slate-200 rounded-md hover:border-blue-400 hover:text-blue-600 transition">抗障碍友好</button>
+                    <button onclick="applyPreset('reading')" class="px-3 py-2 text-xs font-medium border border-slate-200 rounded-md hover:border-blue-400 hover:text-blue-600 transition">深度阅读</button>
+                    <button onclick="applyPreset('dark')" class="px-3 py-2 text-xs font-medium border border-slate-200 rounded-md hover:border-blue-400 hover:text-blue-600 transition">极致暗黑</button>
+                </div>
+            </section>
+
+            <!-- 核心调节 -->
+            <section class="space-y-6">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center">
+                    <span class="mr-2">Styling</span>
+                    <div class="h-px flex-1 bg-slate-100"></div>
+                </h3>
+
+                <!-- 字体 -->
+                <div class="space-y-2">
+                    <label class="text-sm font-semibold text-slate-700 block">字体族 (Font Family)</label>
+                    <select id="ctrl-font" class="w-full text-sm p-2 bg-slate-50 border border-slate-200 rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="'Lexend', 'Noto Sans SC', sans-serif">Lexend (专为阅读优化)</option>
+                        <option value="'OpenDyslexic', sans-serif">OpenDyslexic (专业抗障碍)</option>
+                        <option value="'Noto Sans SC', sans-serif">思源黑体 (标准无衬线)</option>
+                        <option value="'Comic Sans MS', cursive">Comic Sans (非对称推荐)</option>
+                        <option value="serif">系统衬线 (宋体)</option>
+                    </select>
+                </div>
+
+                <!-- 滑块组 -->
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <label class="text-sm font-semibold text-slate-700">字号</label>
+                            <span id="val-size" class="text-xs font-mono text-blue-500">18px</span>
+                        </div>
+                        <input type="range" id="ctrl-size" min="14" max="48" value="18" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <label class="text-sm font-semibold text-slate-700">行高</label>
+                            <span id="val-lh" class="text-xs font-mono text-blue-500">1.6</span>
+                        </div>
+                        <input type="range" id="ctrl-lh" min="1" max="3.5" step="0.1" value="1.6" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <label class="text-sm font-semibold text-slate-700">字间距</label>
+                            <span id="val-ls" class="text-xs font-mono text-blue-500">0px</span>
+                        </div>
+                        <input type="range" id="ctrl-ls" min="-1" max="15" step="0.5" value="0" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <label class="text-sm font-semibold text-slate-700">词间距 (英文)</label>
+                            <span id="val-ws" class="text-xs font-mono text-blue-500">0px</span>
+                        </div>
+                        <input type="range" id="ctrl-ws" min="0" max="25" step="1" value="0" class="w-full">
+                    </div>
+                </div>
+            </section>
+
+            <!-- 颜色 -->
+            <section class="space-y-4">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center">
+                    <span class="mr-2">Colors</span>
+                    <div class="h-px flex-1 bg-slate-100"></div>
+                </h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] text-slate-400 uppercase font-bold mb-1 block">背景色</label>
+                        <input type="color" id="ctrl-bg" value="#ffffff" class="w-full h-10 rounded-lg cursor-pointer border border-slate-100 p-1">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-400 uppercase font-bold mb-1 block">文字色</label>
+                        <input type="color" id="ctrl-text" value="#1a1a1a" class="w-full h-10 rounded-lg cursor-pointer border border-slate-100 p-1">
+                    </div>
+                </div>
+            </section>
+
+            <!-- 辅助 -->
+            <section class="pt-4 border-t border-slate-100">
+                <label class="flex items-center group cursor-pointer">
+                    <input type="checkbox" id="ctrl-ruler" class="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500">
+                    <span class="ml-3 text-sm font-medium text-slate-600 group-hover:text-blue-600 transition">开启阅读辅助线 (Ruler)</span>
+                </label>
+            </section>
+        </aside>
+
+        <!-- 右侧阅读预览区 -->
+        <main class="flex-1 flex flex-col relative overflow-hidden">
+            <!-- Tabs -->
+            <nav class="flex px-8 bg-white border-b border-slate-200 shrink-0">
+                <button class="tab-btn px-6 py-4 text-sm font-bold border-b-2 border-blue-600 text-blue-600 transition" data-target="test-cn">中文测试</button>
+                <button class="tab-btn px-6 py-4 text-sm font-medium text-slate-400 hover:text-slate-600 border-b-2 border-transparent transition" data-target="test-en">English Test</button>
+                <button class="tab-btn px-6 py-4 text-sm font-medium text-slate-400 hover:text-slate-600 border-b-2 border-transparent transition" data-target="test-code">Code Clarity</button>
+            </nav>
+
+            <!-- Viewport -->
+            <div id="viewport" class="flex-1 overflow-y-auto p-12 flex justify-center bg-slate-100/50">
+                <article id="paper" class="w-full max-w-4xl min-h-full p-16 shadow-2xl rounded-sm relative">
+                    <div id="ruler"></div>
+                    
+                    <!-- Content: Chinese -->
+                    <div id="test-cn" class="tab-content active space-y-6">
+                        <h2 class="text-3xl font-bold mb-8">中文排版易读性分析</h2>
+                        <p>对阅读障碍（Dyslexia）群体而言，文字排版的好坏决定了阅读是“获取信息”还是“受罪”。视觉拥挤（Visual Crowding）是核心难点，当字符间距过小时，大脑会难以区分笔画归属，产生文字连在一起或者在“跳舞”的错觉。</p>
+                        <p>请尝试左侧的<strong>“字间距 (Letter Spacing)”</strong>滑块。对于有视觉压力的读者，增加 1-2px 的字间距往往能让阅读速度提升 20% 以上。同时，思源黑体这类无衬线字体，由于笔画末端没有多余的修饰，在小字号下通常比宋体更清晰。</p>
+                        <p>高对比度也并非总是好事。纯黑 (#000) 与纯白 (#FFF) 的剧烈对比会产生闪烁感。尝试将背景调成米黄色 (#F4ECD8)，你会发现眼睛的紧绷感瞬间缓解。</p>
+                    </div>
+
+                    <!-- Content: English -->
+                    <div id="test-en" class="tab-content space-y-6">
+                        <h2 class="text-3xl font-bold mb-8">Dyslexia-Friendly English</h2>
+                        <p>English letters are notorious for their symmetry. Letters like 'b' and 'd', 'p' and 'q' are just mirrored versions of each other. In many fonts, these are perfect geometrical flips, which makes rotation errors very common.</p>
+                        <div class="bg-blue-50/50 p-6 rounded-xl border border-blue-100 text-center text-4xl tracking-widest my-8 font-mono">
+                            b d p q | u n | I l 1
+                        </div>
+                        <p>Switch the font to <strong>"OpenDyslexic"</strong>. Notice how the bottom of each letter is weighted? This provides a "gravity" effect, helping your brain understand which side is down and preventing mental rotation. Another great choice is <strong>"Lexend"</strong>, which was mathematically designed to reduce visual stress.</p>
+                        <p>Increasing <strong>Word Spacing</strong> can also prevent words from blending into a gray blur, allowing the brain to process one unit of meaning at a time.</p>
+                    </div>
+
+                    <!-- Content: Code -->
+                    <div id="test-code" class="tab-content space-y-6">
+                        <h2 class="text-3xl font-bold mb-8">编程字符区分度</h2>
+                        <p>代码阅读不仅是逻辑理解，更是字符匹配。如果排版不当，简单的符号混淆可能导致灾难性的 Debug。</p>
+                        <pre class="bg-slate-900 text-slate-300 p-8 rounded-lg overflow-x-auto font-mono text-lg shadow-inner"><code>function processInput(id, value) {
+  // Can you distinguish '1', 'l', and 'I'?
+  const filter_ID = "l1I"; 
+  const result = id === 1 || id === 'l' ? value : null;
+  
+  // Is 'rn' looking like 'm'?
+  const kernel = "kernal_process_rn";
+  
+  return result;
+}</code></pre>
+                        <p>如果你在阅读上面的代码片段时感到费劲，请调整左侧的<strong>字间距</strong>或切换到 <strong>Lexend</strong> 字体。良好的行高（建议 1.8 以上）能有效防止视线在嵌套代码中迷失。</p>
+                    </div>
+                </article>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // DOM Elements
+        const paper = document.getElementById('paper');
+        const ruler = document.getElementById('ruler');
+        const viewport = document.getElementById('viewport');
+
+        const ctrls = {
+            font: document.getElementById('ctrl-font'),
+            size: document.getElementById('ctrl-size'),
+            lh: document.getElementById('ctrl-lh'),
+            ls: document.getElementById('ctrl-ls'),
+            ws: document.getElementById('ctrl-ws'),
+            bg: document.getElementById('ctrl-bg'),
+            text: document.getElementById('ctrl-text'),
+            ruler: document.getElementById('ctrl-ruler')
+        };
+
+        const vals = {
+            size: document.getElementById('val-size'),
+            lh: document.getElementById('val-lh'),
+            ls: document.getElementById('val-ls'),
+            ws: document.getElementById('val-ws')
+        };
+
+        // Update Styles
+        function applyStyles() {
+            paper.style.fontFamily = ctrls.font.value;
+            paper.style.fontSize = ctrls.size.value + 'px';
+            paper.style.lineHeight = ctrls.lh.value;
+            paper.style.letterSpacing = ctrls.ls.value + 'px';
+            paper.style.wordSpacing = ctrls.ws.value + 'px';
+            
+            // CSS Variables for bg/text
+            document.documentElement.style.setProperty('--paper-bg', ctrls.bg.value);
+            document.documentElement.style.setProperty('--paper-text', ctrls.text.value);
+
+            // Update Labels
+            vals.size.textContent = ctrls.size.value + 'px';
+            vals.lh.textContent = ctrls.lh.value;
+            vals.ls.textContent = ctrls.ls.value + 'px';
+            vals.ws.textContent = ctrls.ws.value + 'px';
+
+            // Ruler Height Update
+            ruler.style.height = (ctrls.size.value * ctrls.lh.value) + 'px';
+        }
+
+        // Event Listeners
+        Object.values(ctrls).forEach(el => {
+            el.addEventListener('input', applyStyles);
+            el.addEventListener('change', applyStyles);
+        });
+
+        // Tab Switching
+        const tabs = document.querySelectorAll('.tab-btn');
+        const contents = document.querySelectorAll('.tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('border-blue-600', 'text-blue-600'));
+                tabs.forEach(t => t.classList.add('border-transparent', 'text-slate-400'));
+                contents.forEach(c => c.classList.remove('active'));
+
+                tab.classList.remove('border-transparent', 'text-slate-400');
+                tab.classList.add('border-blue-600', 'text-blue-600');
+                document.getElementById(tab.dataset.target).classList.add('active');
+            });
+        });
+
+        // Reading Ruler Follow
+        viewport.addEventListener('mousemove', (e) => {
+            if (!ctrls.ruler.checked) return;
+            const rect = paper.getBoundingClientRect();
+            let relativeY = e.clientY - rect.top;
+            
+            // Constrain and offset
+            const h = parseFloat(ruler.style.height);
+            ruler.style.top = (relativeY - h/2) + 'px';
+            ruler.style.display = 'block';
+        });
+
+        ctrls.ruler.addEventListener('change', () => {
+            ruler.style.display = ctrls.ruler.checked ? 'block' : 'none';
+        });
+
+        // Presets
+        function applyPreset(type) {
+            switch(type) {
+                case 'default':
+                    setVals({ font: "'Lexend', 'Noto Sans SC', sans-serif", size: 18, lh: 1.6, ls: 0, ws: 0, bg: "#ffffff", text: "#1a1a1a" });
+                    break;
+                case 'dyslexia':
+                    setVals({ font: "'OpenDyslexic', sans-serif", size: 22, lh: 2.0, ls: 2, ws: 6, bg: "#fdfbf7", text: "#1a202c" });
+                    ctrls.ruler.checked = true;
+                    break;
+                case 'reading':
+                    setVals({ font: "'Lexend', sans-serif", size: 20, lh: 1.8, ls: 0.5, ws: 2, bg: "#f4ecd8", text: "#433422" });
+                    break;
+                case 'dark':
+                    setVals({ font: "'Noto Sans SC', sans-serif", size: 18, lh: 1.7, ls: 0.5, ws: 0, bg: "#1a1b1e", text: "#e2e8f0" });
+                    break;
+            }
+            applyStyles();
+        }
+
+        function setVals(o) {
+            ctrls.font.value = o.font;
+            ctrls.size.value = o.size;
+            ctrls.lh.value = o.lh;
+            ctrls.ls.value = o.ls;
+            ctrls.ws.value = o.ws;
+            ctrls.bg.value = o.bg;
+            ctrls.text.value = o.text;
+        }
+
+        function exportSettings() {
+            const css = `
+/* Reading Optimization Config */
+.optimized-reading {
+  font-family: ${ctrls.font.value};
+  font-size: ${ctrls.size.value}px;
+  line-height: ${ctrls.lh.value};
+  letter-spacing: ${ctrls.ls.value}px;
+  word-spacing: ${ctrls.ws.value}px;
+  background-color: ${ctrls.bg.value};
+  color: ${ctrls.text.value};
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}`;
+            console.log(css);
+            alert("配置已生成在控制台 (Console)！\n\n推荐参数:\n字号: " + ctrls.size.value + "px\n行高: " + ctrls.lh.value);
+        }
+
+        // Init
+        applyStyles();
+    </script>
+</body>
+</html>

@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contextly | AI Enhanced</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Markdown Parser for AI responses if needed -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        glass: {
+                            100: 'rgba(255, 255, 255, 0.1)',
+                            200: 'rgba(255, 255, 255, 0.2)',
+                            300: 'rgba(255, 255, 255, 0.3)',
+                            border: 'rgba(255, 255, 255, 0.4)',
+                            text: '#1f2937'
+                        }
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-out forwards',
+                        'slide-up': 'slideUp 0.4s ease-out forwards',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
+            background-size: 400% 400%;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+
+        .hide-scrollbar::-webkit-scrollbar { width: 4px; }
+        .hide-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .hide-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 10px; }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        }
+
+        .highlight-text {
+            background: linear-gradient(120deg, rgba(253, 224, 71, 0.6) 0%, rgba(253, 224, 71, 0) 100%);
+            background-repeat: no-repeat;
+            background-size: 100% 40%;
+            background-position: 0 88%;
+            padding: 0 2px;
+            font-weight: 600;
+            color: #000;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 3px solid #4f46e5;
+            width: 20px;
+            height: 20px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    <script src="../shared/sync-client.js"></script>
+    <script src="../shared/sync-widget.js"></script>
+</head>
+<body>
+
+    <!-- 主容器 -->
+    <div id="main-container" class="relative w-full max-w-[600px] aspect-square m-4 glass-panel rounded-3xl overflow-hidden flex flex-col text-gray-800 transition-all duration-300">
+        
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="hidden absolute inset-0 bg-white/30 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
+            <div class="spinner w-10 h-10 mb-2 border-indigo-600 border-t-transparent"></div>
+            <span class="text-sm font-medium text-indigo-800 animate-pulse">Consulting DeepSeek...</span>
+        </div>
+
+        <!-- 顶部导航栏 -->
+        <header class="h-16 border-b border-glass-border flex items-center justify-between px-6 shrink-0 z-20">
+            <div class="flex items-center gap-2 cursor-pointer" onclick="app.navigate('home')">
+                <i class="ph ph-cube-transparent text-2xl text-indigo-600"></i>
+                <span class="font-bold text-lg tracking-tight">Contextly <span class="text-xs font-normal text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded ml-1">AI</span></span>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="app.navigate('settings')" class="text-gray-600 hover:text-indigo-600 transition-colors" title="Settings">
+                    <i class="ph ph-gear text-2xl"></i>
+                </button>
+                <div id="header-actions" class="flex gap-3">
+                    <!-- 动态注入按钮 -->
+                </div>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main id="content-area" class="flex-1 overflow-y-auto hide-scrollbar relative p-6">
+            <!-- 视图将在这里动态渲染 -->
+        </main>
+
+    </div>
+
+    <!-- 逻辑脚本 -->
+    <script>
+        // --- 0. DeepSeek AI Service ---
+        const apiKey = ""; // Set by environment if available, otherwise user provides it
+
+        const DeepSeekService = {
+            getKey: () => {
+                const settings = Store.getData().settings || {};
+                // Priority: User Setting > Environment Variable > Empty
+                return settings.apiKey || (typeof apiKey !== 'undefined' ? apiKey : '');
+            },
+
+            // 通用请求函数
+            callDeepSeek: async (messages, system = "") => {
+                const key = DeepSeekService.getKey();
+                if (!key) {
+                    throw new Error("Missing API Key. Please set it in Settings.");
+                }
+
+                const url = 'https://api.deepseek.com/chat/completions';
+                
+                const payload = {
+                    model: "deepseek-chat",
+                    messages: [
+                        ...(system ? [{ role: "system", content: system }] : []),
+                        ...messages
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 2000,
+                    stream: false
+                };
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${key}`
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error?.message || 'API Request Failed');
+                    }
+
+                    const data = await response.json();
+                    return data.choices?.[0]?.message?.content || "";
+                } catch (error) {
+                    console.error("DeepSeek Error:", error);
+                    throw error;
+                }
+            },
+
+            // 1. 智能填词功能
+            smartFill: async (term) => {
+                const systemPrompt = `You are an expert English language tutor. 
+                Your task is to create a high-quality flashcard for a given English term.
+                Return ONLY a raw JSON object (no markdown code blocks) with the following structure:
+                {
+                    "sentence": "A clear, exemplary English sentence using the term.",
+                    "preContext": "One sentence describing the situation BEFORE the target sentence.",
+                    "postContext": "One sentence describing the outcome or situation AFTER the target sentence.",
+                    "definition": "A concise definition in Simplified Chinese (CN), including part of speech."
+                }`;
+                
+                const userPrompt = `Create a flashcard for the term: "${term}"`;
+                
+                const result = await DeepSeekService.callDeepSeek(
+                    [{ role: "user", content: userPrompt }],
+                    systemPrompt
+                );
+                
+                // 清理可能存在的 markdown 标记
+                const cleanJson = result.replace(/```json|```/g, '').trim();
+                try {
+                    return JSON.parse(cleanJson);
+                } catch (e) {
+                    // 如果解析失败，尝试提取 JSON
+                    const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        return JSON.parse(jsonMatch[0]);
+                    }
+                    throw new Error("Failed to parse AI response as JSON");
+                }
+            },
+
+            // 2. 助记功能
+            getMnemonic: async (term, definition) => {
+                const systemPrompt = "You are a creative memory expert.";
+                const userPrompt = `Give me a short, memorable mnemonic (memory aid) for the English word "${term}" which means "${definition}". 
+                It can be an English association, a Chinese harmonic (谐音), or a logic bridge. Keep it under 30 words. Output plain text only.`;
+                
+                return await DeepSeekService.callDeepSeek(
+                    [{ role: "user", content: userPrompt }],
+                    systemPrompt
+                );
+            }
+        };
+
+        // --- 1. 数据模型与工具 ---
+
+        const Utils = {
+            generateId: () => '_' + Math.random().toString(36).substr(2, 9),
+            highlightTerm: (fullSentence, term) => {
+                if (!term || !fullSentence) return fullSentence;
+                const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(`(${escapedTerm})`, 'gi');
+                return fullSentence.replace(regex, '<span class="highlight-text">$1</span>');
+            },
+            toggleLoading: (show) => {
+                const el = document.getElementById('loading-overlay');
+                if(show) el.classList.remove('hidden');
+                else el.classList.add('hidden');
+            }
+        };
+
+        // --- 2. 存储与算法 ---
+
+        const Store = {
+            getKey: () => 'glass_memory_v2',
+            getData: () => {
+                const data = localStorage.getItem(Store.getKey());
+                // Migration for existing data or new init
+                const parsed = data ? JSON.parse(data) : { settings: { apiKey: '' }, cards: [] };
+                if (!parsed.settings) parsed.settings = { apiKey: '' };
+                return parsed;
+            },
+            saveData: (data) => {
+                localStorage.setItem(Store.getKey(), JSON.stringify(data));
+            },
+            saveSettings: (settings) => {
+                const data = Store.getData();
+                data.settings = { ...data.settings, ...settings };
+                Store.saveData(data);
+            },
+            addCard: (card) => {
+                const data = Store.getData();
+                const newCard = {
+                    id: Utils.generateId(),
+                    term: card.term,
+                    sentence: card.sentence,
+                    preContext: card.preContext,
+                    postContext: card.postContext,
+                    definition: card.definition,
+                    created: Date.now(),
+                    state: 'new', 
+                    due: Date.now(),
+                    stability: 0,
+                    difficulty: 0,
+                    reps: 0
+                };
+                data.cards.push(newCard);
+                Store.saveData(data);
+                return newCard;
+            },
+            updateCard: (updatedCard) => {
+                const data = Store.getData();
+                const index = data.cards.findIndex(c => c.id === updatedCard.id);
+                if (index !== -1) {
+                    data.cards[index] = updatedCard;
+                    Store.saveData(data);
+                }
+            },
+            deleteCard: (id) => {
+                const data = Store.getData();
+                data.cards = data.cards.filter(c => c.id !== id);
+                Store.saveData(data);
+            },
+            getDailyQueue: () => {
+                const data = Store.getData();
+                const now = Date.now();
+                return data.cards.filter(c => c.due <= now).sort((a, b) => a.due - b.due);
+            },
+            getAllCards: () => {
+                const data = Store.getData();
+                return data.cards;
+            }
+        };
+
+        const Scheduler = {
+            rate: (card, rating) => {
+                const now = Date.now();
+                let nextInterval = 1; 
+
+                if (rating === 1) { 
+                    nextInterval = 1; 
+                    card.state = 'learning';
+                    card.difficulty = Math.min(10, card.difficulty + 2);
+                } else if (rating === 2) { 
+                    nextInterval = 10; 
+                    card.difficulty = Math.min(10, card.difficulty + 1);
+                } else if (rating === 3) { 
+                    if (card.state === 'new' || card.state === 'learning') {
+                        nextInterval = 60 * 24; 
+                        card.state = 'review';
+                    } else {
+                        nextInterval = 60 * 24 * (card.reps * 2.5 || 2); 
+                    }
+                    card.reps += 1;
+                } else if (rating === 4) { 
+                    if (card.state === 'new') {
+                         nextInterval = 60 * 24 * 4; 
+                    } else {
+                         nextInterval = 60 * 24 * (card.reps * 4 || 4);
+                    }
+                    card.state = 'review';
+                    card.reps += 1;
+                    card.difficulty = Math.max(0, card.difficulty - 1);
+                }
+
+                if (!card._isFreeReview) {
+                    card.due = now + (nextInterval * 60 * 1000);
+                }
+                
+                delete card._isFreeReview; 
+                return card;
+            }
+        };
+
+        // --- 3. 页面渲染逻辑 ---
+
+        const app = {
+            currentView: 'home',
+            queue: [],
+            currentCardIndex: 0,
+            isCardFlipped: false,
+            mode: 'plan',
+
+            init: () => {
+                const data = Store.getData();
+                if (data.cards.length === 0) {
+                    Store.addCard({
+                        term: "epiphany",
+                        sentence: "It was a sudden epiphany that changed his life path forever.",
+                        preContext: "He had been struggling with the problem for years without a solution.",
+                        postContext: "From that moment on, he knew exactly what he needed to do.",
+                        definition: "n. 顿悟，突然的感悟; (神灵的)显现"
+                    });
+                }
+                app.navigate('home');
+            },
+
+            navigate: (view, params = {}) => {
+                app.currentView = view;
+                const container = document.getElementById('content-area');
+                const headerActions = document.getElementById('header-actions');
+                
+                container.innerHTML = '';
+                headerActions.innerHTML = '';
+
+                switch (view) {
+                    case 'home': app.renderHome(container); break;
+                    case 'library': app.renderLibrary(container, headerActions); break;
+                    case 'editor': app.renderEditor(container, headerActions, params.cardId); break;
+                    case 'study-setup': app.renderStudySetup(container); break;
+                    case 'study-session': app.renderStudySession(container, params.mode); break;
+                    case 'settings': app.renderSettings(container); break;
+                }
+            },
+
+            // --- Views ---
+
+            renderHome: (container) => {
+                const stats = Store.getData().cards.length;
+                const dueCount = Store.getDailyQueue().length;
+                
+                container.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center gap-6 animate-fade-in">
+                        <div class="text-center mb-4">
+                            <h1 class="text-3xl font-light text-indigo-900 mb-2">Hello, Learner.</h1>
+                            <p class="text-gray-600 text-sm">Review your collection or explore new words.</p>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 w-full max-w-sm">
+                            <button onclick="app.navigate('library')" class="group relative aspect-square bg-white/40 hover:bg-white/60 border border-white/60 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-1 flex flex-col items-center justify-center gap-3">
+                                <i class="ph ph-books text-4xl text-indigo-600 group-hover:scale-110 transition-transform"></i>
+                                <span class="font-medium text-gray-700">Library</span>
+                                <span class="text-xs text-gray-500 bg-white/50 px-2 py-0.5 rounded-full">${stats} cards</span>
+                            </button>
+
+                            <button onclick="app.navigate('study-setup')" class="group relative aspect-square bg-gradient-to-br from-indigo-500/10 to-purple-500/10 hover:from-indigo-500/20 hover:to-purple-500/20 border border-white/60 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-1 flex flex-col items-center justify-center gap-3">
+                                <i class="ph ph-brain text-4xl text-purple-600 group-hover:scale-110 transition-transform"></i>
+                                <span class="font-medium text-gray-700">Study</span>
+                                <div class="flex items-center gap-1">
+                                    <span class="text-xs ${dueCount > 0 ? 'text-red-500 font-bold' : 'text-green-600'} bg-white/50 px-2 py-0.5 rounded-full">
+                                        ${dueCount} Due
+                                    </span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            },
+
+            renderSettings: (container) => {
+                const currentKey = Store.getData().settings?.apiKey || '';
+                
+                container.innerHTML = `
+                    <div class="h-full flex flex-col gap-4 animate-fade-in">
+                        <h2 class="text-xl font-bold text-gray-800 border-b border-black/5 pb-2">Settings</h2>
+                        
+                        <div class="flex-1 space-y-6">
+                            <div class="bg-white/40 p-5 rounded-xl border border-white/50">
+                                <div class="flex items-center gap-2 mb-3">
+                                    <i class="ph ph-sparkle text-indigo-500 text-xl"></i>
+                                    <h3 class="font-bold text-gray-800">DeepSeek API Configuration</h3>
+                                </div>
+                                <p class="text-sm text-gray-600 mb-4">To enable AI features like Smart Fill and Mnemonics, please enter your DeepSeek API Key.</p>
+                                
+                                <div class="space-y-2">
+                                    <label class="text-xs font-bold text-gray-500 uppercase">API Key</label>
+                                    <div class="relative">
+                                        <input type="password" id="input-api-key" value="${currentKey}" class="w-full bg-white/50 border border-white/60 rounded-lg p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-400/50" placeholder="sk-...">
+                                        <button onclick="const el=document.getElementById('input-api-key'); el.type = el.type==='password'?'text':'password'" class="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
+                                            <i class="ph ph-eye"></i>
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-gray-400">Your key is stored locally in your browser.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pt-2">
+                            <button onclick="app.saveSettings()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl shadow-lg transition-all active:scale-95">
+                                Save Settings
+                            </button>
+                        </div>
+                    </div>
+                `;
+            },
+
+            saveSettings: () => {
+                const key = document.getElementById('input-api-key').value.trim();
+                Store.saveSettings({ apiKey: key });
+                alert("Settings Saved!");
+                app.navigate('home');
+            },
+
+            renderLibrary: (container, headerActions) => {
+                const cards = Store.getData().cards.reverse();
+                headerActions.innerHTML = `
+                    <button onclick="app.navigate('editor')" class="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm transition-colors shadow-md">
+                        <i class="ph ph-plus-bold"></i> Add
+                    </button>
+                `;
+
+                if (cards.length === 0) {
+                    container.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-gray-500">Empty Library</div>`;
+                    return;
+                }
+
+                let html = `<div class="space-y-3 pb-4 animate-slide-up">`;
+                cards.forEach(card => {
+                    const previewSentence = card.sentence.length > 60 ? card.sentence.substring(0, 60) + '...' : card.sentence;
+                    html += `
+                        <div onclick="app.navigate('editor', {cardId: '${card.id}'})" class="bg-white/40 hover:bg-white/60 border border-white/50 p-4 rounded-xl cursor-pointer transition-all hover:shadow-md group">
+                            <div class="flex justify-between items-start mb-1">
+                                <h3 class="font-bold text-indigo-900 text-lg">${card.term}</h3>
+                                <span class="text-xs text-gray-400 bg-white/50 px-1.5 py-0.5 rounded">${card.state}</span>
+                            </div>
+                            <p class="text-sm text-gray-700 leading-snug line-clamp-2 font-serif opacity-80 group-hover:opacity-100">${previewSentence}</p>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+                container.innerHTML = html;
+            },
+
+            renderEditor: (container, headerActions, cardId = null) => {
+                const cards = Store.getData().cards;
+                const card = cardId ? cards.find(c => c.id === cardId) : { term: '', sentence: '', preContext: '', postContext: '', definition: '' };
+                const isEdit = !!cardId;
+
+                headerActions.innerHTML = `
+                   ${isEdit ? `<button onclick="app.deleteCard('${card.id}')" class="text-red-500 hover:text-red-700 p-2"><i class="ph ph-trash text-xl"></i></button>` : ''} 
+                `;
+
+                container.innerHTML = `
+                    <div class="h-full flex flex-col gap-4 animate-fade-in">
+                        <div class="flex items-center justify-between border-b border-black/5 pb-2">
+                            <h2 class="text-xl font-bold text-gray-800">${isEdit ? 'Edit Card' : 'New Card'}</h2>
+                        </div>
+                        
+                        <div class="flex-1 overflow-y-auto space-y-4 pr-1">
+                            <div class="space-y-1">
+                                <label class="text-xs font-bold text-gray-500 uppercase flex justify-between">
+                                    Word / Phrase
+                                    <!-- AI Button -->
+                                    <button onclick="app.triggerSmartFill()" class="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 text-[10px] bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 transition-colors">
+                                        <i class="ph ph-sparkle-fill"></i> AI Smart Fill
+                                    </button>
+                                </label>
+                                <input type="text" id="input-term" value="${card.term}" class="w-full bg-white/50 border border-white/60 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-400/50" placeholder="e.g. epiphany">
+                            </div>
+
+                            <div class="space-y-1">
+                                <label class="text-xs font-bold text-gray-500 uppercase">Target Sentence</label>
+                                <textarea id="input-sentence" rows="2" class="w-full bg-white/50 border border-white/60 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-400/50" placeholder="The sentence containing the word...">${card.sentence}</textarea>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-4">
+                                <div class="space-y-1">
+                                    <label class="text-xs font-bold text-gray-500 uppercase">Pre-Context</label>
+                                    <textarea id="input-pre" rows="2" class="w-full bg-white/30 border border-white/60 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50" placeholder="What happened before?">${card.preContext}</textarea>
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-xs font-bold text-gray500 uppercase">Post-Context</label>
+                                    <textarea id="input-post" rows="2" class="w-full bg-white/30 border border-white/60 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50" placeholder="What happened after?">${card.postContext}</textarea>
+                                </div>
+                            </div>
+
+                            <div class="space-y-1">
+                                <label class="text-xs font-bold text-gray-500 uppercase">Definition & Notes</label>
+                                <textarea id="input-def" rows="3" class="w-full bg-white/50 border border-white/60 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-400/50" placeholder="Meaning, translation, etc.">${card.definition}</textarea>
+                            </div>
+                        </div>
+
+                        <div class="pt-2">
+                            <button onclick="app.saveCard('${cardId || ''}')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl shadow-lg shadow-indigo-500/30 transition-all active:scale-95">
+                                ${isEdit ? 'Save Changes' : 'Create Card'}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            },
+
+            triggerSmartFill: async () => {
+                const term = document.getElementById('input-term').value.trim();
+                if (!term) {
+                    alert("Please enter a word first.");
+                    return;
+                }
+
+                Utils.toggleLoading(true);
+                try {
+                    const data = await DeepSeekService.smartFill(term);
+                    
+                    document.getElementById('input-sentence').value = data.sentence || "";
+                    document.getElementById('input-pre').value = data.preContext || "";
+                    document.getElementById('input-post').value = data.postContext || "";
+                    document.getElementById('input-def').value = data.definition || "";
+                    
+                } catch (e) {
+                    alert("AI Error: " + e.message + "\nMake sure you have set a valid API Key in Settings.");
+                } finally {
+                    Utils.toggleLoading(false);
+                }
+            },
+
+            saveCard: (id) => {
+                const term = document.getElementById('input-term').value.trim();
+                const sentence = document.getElementById('input-sentence').value.trim();
+                if (!term || !sentence) {
+                    alert('Word and Sentence are required.');
+                    return;
+                }
+
+                const payload = {
+                    id: id || null,
+                    term,
+                    sentence,
+                    preContext: document.getElementById('input-pre').value.trim(),
+                    postContext: document.getElementById('input-post').value.trim(),
+                    definition: document.getElementById('input-def').value.trim()
+                };
+
+                if (id) {
+                    const oldCard = Store.getData().cards.find(c => c.id === id);
+                    Store.updateCard({ ...oldCard, ...payload });
+                } else {
+                    Store.addCard(payload);
+                }
+                app.navigate('library');
+            },
+
+            deleteCard: (id) => {
+                if(confirm('Delete this card?')) {
+                    Store.deleteCard(id);
+                    app.navigate('library');
+                }
+            },
+
+            renderStudySetup: (container) => {
+                const dailyQueue = Store.getDailyQueue();
+                const allCards = Store.getAllCards();
+
+                container.innerHTML = `
+                    <div class="h-full flex flex-col justify-center items-center gap-6 animate-fade-in text-center">
+                        <div class="mb-2">
+                            <h2 class="text-2xl font-light text-indigo-900">Choose Mode</h2>
+                        </div>
+
+                        <button onclick="app.navigate('study-session', {mode: 'plan'})" ${dailyQueue.length === 0 ? 'disabled' : ''} class="w-64 p-5 rounded-2xl border ${dailyQueue.length > 0 ? 'bg-white/60 border-indigo-200 cursor-pointer hover:bg-white/80 hover:shadow-lg hover:border-indigo-300' : 'bg-gray-100/50 border-gray-200 cursor-not-allowed opacity-60'} transition-all text-left group">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-bold text-lg text-gray-800">Daily Plan</span>
+                                <i class="ph ph-calendar-check text-2xl text-indigo-600"></i>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-2">Review scheduled cards based on FRSR algorithm.</p>
+                            <span class="inline-block bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded font-bold">
+                                ${dailyQueue.length} cards due
+                            </span>
+                        </button>
+
+                        <button onclick="app.navigate('study-session', {mode: 'free'})" class="w-64 p-5 rounded-2xl border bg-white/40 border-purple-200 hover:bg-white/70 hover:shadow-lg hover:border-purple-300 transition-all text-left cursor-pointer group">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-bold text-lg text-gray-800">Free Review</span>
+                                <i class="ph ph-shuffle text-2xl text-purple-600"></i>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-2">DIY Session. Randomly review cards.</p>
+                            <span class="inline-block bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded font-bold">
+                                ${allCards.length} cards total
+                            </span>
+                        </button>
+                    </div>
+                `;
+            },
+
+            renderStudySession: (container, mode) => {
+                app.mode = mode;
+                if (mode === 'plan') {
+                    app.queue = Store.getDailyQueue();
+                } else {
+                    app.queue = Store.getAllCards().sort(() => 0.5 - Math.random());
+                    app.queue.forEach(c => c._isFreeReview = true);
+                }
+
+                app.currentCardIndex = 0;
+                app.isCardFlipped = false;
+                app.renderCard(container);
+            },
+
+            renderCard: (container) => {
+                if (app.currentCardIndex >= app.queue.length) {
+                    container.innerHTML = `
+                        <div class="h-full flex flex-col items-center justify-center animate-fade-in text-center">
+                            <i class="ph ph-confetti text-6xl text-indigo-500 mb-4"></i>
+                            <h2 class="text-2xl font-bold text-gray-800 mb-2">Session Complete!</h2>
+                            <p class="text-gray-600 mb-6">You've reviewed ${app.queue.length} cards.</p>
+                            <button onclick="app.navigate('home')" class="bg-indigo-600 text-white px-6 py-2 rounded-full shadow-lg hover:bg-indigo-700 transition-transform hover:scale-105">Back Home</button>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const card = app.queue[app.currentCardIndex];
+                const highlightedSentence = Utils.highlightTerm(card.sentence, card.term);
+
+                container.innerHTML = `
+                    <div class="h-full flex flex-col relative">
+                        <div class="w-full bg-gray-200/50 h-1.5 rounded-full mb-6 overflow-hidden">
+                            <div class="bg-indigo-500 h-full transition-all duration-300" style="width: ${(app.currentCardIndex / app.queue.length) * 100}%"></div>
+                        </div>
+
+                        <div id="card-face" class="flex-1 flex flex-col justify-center items-start overflow-y-auto pr-2 animate-fade-in">
+                            ${card.preContext ? `<p class="text-sm text-gray-500 mb-3 pl-4 border-l-2 border-gray-300 italic">${card.preContext}</p>` : ''}
+                            
+                            <div class="text-xl md:text-2xl font-serif text-gray-900 leading-relaxed mb-4">
+                                ${highlightedSentence}
+                            </div>
+
+                            ${card.postContext ? `<p class="text-sm text-gray-500 mt-1 pl-4 border-l-2 border-gray-300 italic">${card.postContext}</p>` : ''}
+                        </div>
+
+                        <div id="card-back" class="hidden flex-1 border-t border-glass-border pt-4 mt-4 animate-slide-up">
+                            <div class="bg-white/40 p-4 rounded-xl border border-white/50 w-full relative">
+                                <div class="flex justify-between items-center mb-1">
+                                    <h3 class="text-xs font-bold text-indigo-600 uppercase">Definition</h3>
+                                    <!-- AI Mnemonic Button -->
+                                    <button onclick="app.showMnemonic('${card.id}')" class="text-[10px] text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded transition-colors flex items-center gap-1">
+                                        <i class="ph ph-magic-wand"></i> AI Mnemonic
+                                    </button>
+                                </div>
+                                <p class="text-gray-800">${card.definition || 'No definition.'}</p>
+                                <div id="mnemonic-area-${card.id}" class="hidden mt-3 pt-3 border-t border-indigo-100 text-sm text-indigo-800 italic bg-indigo-50/50 p-2 rounded"></div>
+                            </div>
+                        </div>
+
+                        <div class="mt-auto pt-4 h-20 flex items-center justify-center w-full">
+                            ${!app.isCardFlipped ? 
+                                `<button onclick="app.flipCard()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl shadow-lg transition-all active:scale-95">Show Answer</button>` 
+                                : 
+                                `<div class="grid grid-cols-4 gap-2 w-full">
+                                    <button onclick="app.rateCard(1)" class="bg-red-100 hover:bg-red-200 text-red-700 py-2 rounded-lg font-medium text-sm transition-colors flex flex-col items-center justify-center"><span>Again</span><span class="text-[10px] opacity-70">1m</span></button>
+                                    <button onclick="app.rateCard(2)" class="bg-orange-100 hover:bg-orange-200 text-orange-700 py-2 rounded-lg font-medium text-sm transition-colors flex flex-col items-center justify-center"><span>Hard</span><span class="text-[10px] opacity-70">10m</span></button>
+                                    <button onclick="app.rateCard(3)" class="bg-blue-100 hover:bg-blue-200 text-blue-700 py-2 rounded-lg font-medium text-sm transition-colors flex flex-col items-center justify-center"><span>Good</span><span class="text-[10px] opacity-70">1d</span></button>
+                                    <button onclick="app.rateCard(4)" class="bg-green-100 hover:bg-green-200 text-green-700 py-2 rounded-lg font-medium text-sm transition-colors flex flex-col items-center justify-center"><span>Easy</span><span class="text-[10px] opacity-70">4d</span></button>
+                                </div>`
+                            }
+                        </div>
+                    </div>
+                `;
+                
+                if (app.isCardFlipped) {
+                    document.getElementById('card-back').classList.remove('hidden');
+                }
+            },
+
+            showMnemonic: async (cardId) => {
+                const area = document.getElementById(`mnemonic-area-${cardId}`);
+                if (!area.classList.contains('hidden') && area.innerText !== "") return; // Already shown
+                
+                const card = Store.getData().cards.find(c => c.id === cardId);
+                
+                area.classList.remove('hidden');
+                area.innerHTML = '<span class="animate-pulse">✨ Dreaming up a mnemonic...</span>';
+
+                try {
+                    const mnemonic = await DeepSeekService.getMnemonic(card.term, card.definition);
+                    area.innerHTML = `<strong>🤖 AI Tip:</strong> ${mnemonic}`;
+                } catch (e) {
+                    area.innerHTML = `Error: Please check API Key in settings.`;
+                }
+            },
+
+            flipCard: () => {
+                app.isCardFlipped = true;
+                const backEl = document.getElementById('card-back');
+                backEl.classList.remove('hidden');
+                app.renderCard(document.getElementById('content-area'));
+            },
+
+            rateCard: (rating) => {
+                const card = app.queue[app.currentCardIndex];
+                const updatedCard = Scheduler.rate(card, rating);
+                Store.updateCard(updatedCard);
+                app.currentCardIndex++;
+                app.isCardFlipped = false;
+                app.renderCard(document.getElementById('content-area'));
+            }
+        };
+
+        window.addEventListener('DOMContentLoaded', app.init);
+
+        // ===== Cloud Sync =====
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!window.SyncWidget) return;
+
+            const applyCardChanges = (changes) => {
+                const data = Store.getData();
+                let changed = false;
+                for (const ch of changes) {
+                    const idx = data.cards.findIndex(c => c.id === ch.id);
+                    if (ch.op === 'delete') {
+                        if (idx !== -1) { data.cards.splice(idx, 1); changed = true; }
+                        continue;
+                    }
+                    if (!ch.data) continue;
+                    const incoming = {
+                        ...ch.data,
+                        updatedAt: Math.max(Number(ch.data.updatedAt) || 0, Number(ch.updatedAt) || 0)
+                    };
+                    if (idx === -1) {
+                        data.cards.push(incoming);
+                        changed = true;
+                    } else if (Number(incoming.updatedAt) > Number(data.cards[idx].updatedAt || data.cards[idx].created || 0)) {
+                        data.cards[idx] = incoming;
+                        changed = true;
+                    }
+                }
+                if (changed) Store.saveData(data);
+                return changed;
+            };
+
+            window.SyncWidget.mount({
+                app: 'contextly',
+                collections: {
+                    cards: {
+                        read: () => Store.getData().cards,
+                        getId: c => c.id,
+                        getUpdatedAt: c => Number(c.updatedAt) || Number(c.created) || 0,
+                        applyChanges: applyCardChanges
+                    }
+                },
+                onApplied: () => {
+                    const view = ['home', 'library', 'settings'].includes(app.currentView) ? app.currentView : 'home';
+                    app.navigate(view);
+                }
+            });
+        });
+
+    </script>
+</body>
+</html>

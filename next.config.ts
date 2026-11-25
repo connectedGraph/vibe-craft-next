@@ -10,13 +10,18 @@ const nextConfig: NextConfig = {
     },
   },
   async rewrites() {
-    // 尚未迁移的工具暂时反代到旧 Node 服务
-    return [{ source: "/legacy/:path*", destination: "http://127.0.0.1:8792/:path*" }];
+    return [];
   },
   async redirects() {
+    const tools = ["contextly", "expressing", "desktop-lite", "adhd-text"];
     return [
       { source: "/login.html", destination: "/login", permanent: false },
       { source: "/admin.html", destination: "/admin", permanent: false },
+      // 静态工具目录 → index.html
+      ...tools.map((t) => ({ source: `/${t}`, destination: `/${t}/index.html`, permanent: false })),
+      { source: "/index.html", destination: "/", permanent: false },
+      // 旧版 /legacy/* 地址跳回新路径
+      { source: "/legacy/:path*", destination: "/:path*", permanent: false },
     ];
   },
 };

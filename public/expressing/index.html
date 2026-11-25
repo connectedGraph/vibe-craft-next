@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expressing | Native Expression Refiner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#059669', // Emerald 600 (Main theme changed to Green for "Correctness")
+                        primaryLight: '#ecfdf5', // Emerald 50
+                        danger: '#dc2626', // Red 600
+                        dangerLight: '#fef2f2', // Red 50
+                        secondary: '#64748b', // Slate 500
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Segoe UI', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Typography Fixes */
+        .prose :where(code):not(:where(pre code)) {
+            color: #059669;
+            background-color: #ecfdf5;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-weight: 500;
+            border: 1px solid #a7f3d0;
+        }
+        .prose pre { background-color: #1e293b; border-radius: 0.5rem; }
+
+        /* Highlight Styles */
+        .bri-highlight {
+            background-color: #ffff00;
+            border-bottom: 2px solid #eab308;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s;
+            padding: 0 2px;
+        }
+        .mode-view .bri-highlight:hover { background-color: #fde047; }
+        .mode-view .bri-highlight.active { outline: 2px solid #ca8a04; }
+        
+        /* Floating Toolbar */
+        #selection-toolbar {
+            display: none; position: fixed; z-index: 100;
+            background: #1e293b; color: white; padding: 8px 16px;
+            border-radius: 99px; box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.3);
+            font-size: 0.9rem; font-weight: 600; cursor: pointer;
+            animation: fadeIn 0.15s ease-out; transform: translateX(-50%);
+        }
+        #selection-toolbar::after {
+            content: ''; position: absolute; top: 100%; left: 50%; margin-left: -6px;
+            border-width: 6px; border-style: solid; border-color: #1e293b transparent transparent transparent;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+        /* Sidebar Transition */
+        #left-sidebar { transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .sidebar-closed #left-sidebar { margin-left: -18rem; }
+    </style>
+    <script src="../shared/sync-client.js"></script>
+    <script src="../shared/sync-widget.js"></script>
+</head>
+<body class="bg-gray-50 h-screen w-screen flex text-slate-800 overflow-hidden" id="app-body">
+
+    <aside id="left-sidebar" class="w-72 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+        <div class="h-16 flex items-center justify-between px-5 border-b border-gray-100">
+            <div class="flex items-center gap-2 text-primary font-bold text-lg tracking-tight select-none">
+                <div class="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center shadow-md shadow-emerald-100">
+                    <i class="ph-bold ph-arrows-left-right text-xl"></i>
+                </div>
+                Expressing
+            </div>
+            <button onclick="window.createNewDoc()" class="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-50 text-primary hover:bg-emerald-100 transition-colors" title="New Correction">
+                <i class="ph-bold ph-plus"></i>
+            </button>
+        </div>
+        
+        <div class="p-4 space-y-3 border-b border-gray-100 bg-gray-50/30">
+            <div class="relative group">
+                <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors"></i>
+                <input type="text" id="sidebar-search" 
+                       class="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-primaryLight focus:border-primary outline-none transition-all shadow-sm"
+                       placeholder="Search expressions..."
+                       oninput="window.handleSearch()">
+            </div>
+            
+            <div class="flex gap-2">
+                <div class="relative flex-1">
+                    <select id="sidebar-category" 
+                            class="w-full pl-3 pr-8 py-1.5 text-sm bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-primaryLight focus:border-primary outline-none appearance-none cursor-pointer text-gray-600"
+                            onchange="window.handleSearch()">
+                        <option value="">All Categories</option>
+                    </select>
+                    <i class="ph-bold ph-caret-down absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs"></i>
+                </div>
+                <button onclick="window.openCategoryManager()" class="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-gray-500 hover:text-primary hover:border-primaryLight hover:bg-primaryLight transition-all shadow-sm">
+                    <i class="ph-bold ph-gear"></i>
+                </button>
+            </div>
+
+            <div class="relative w-full">
+                <select id="sidebar-tags" 
+                        class="w-full pl-8 pr-8 py-1.5 text-sm bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-primaryLight focus:border-primary outline-none appearance-none cursor-pointer text-gray-600"
+                        onchange="window.handleSearch()">
+                    <option value="">All Tags</option>
+                    </select>
+                <i class="ph-bold ph-tag absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs"></i>
+                <i class="ph-bold ph-caret-down absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs"></i>
+            </div>
+        </div>
+
+        <div id="doc-list" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+
+        <div class="p-4 border-t border-gray-100 bg-gray-50/50">
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="window.triggerImport()" class="flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm">
+                    <i class="ph ph-upload-simple"></i> Import
+                </button>
+                <button onclick="window.exportBri()" class="flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm">
+                    <i class="ph ph-download-simple"></i> Save
+                </button>
+            </div>
+            <input type="file" id="file-input" class="hidden" accept=".bri,.json" onchange="window.handleFileImport(this)">
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col h-full relative min-w-0 bg-white">
+        
+        <header class="h-16 flex items-center justify-between px-8 border-b border-gray-100 bg-white/80 backdrop-blur-sm z-30 sticky top-0">
+            <div class="flex-1 flex items-center min-w-0 mr-4 gap-4">
+                <button onclick="window.toggleSidebar()" class="p-2 -ml-2 text-gray-500 hover:text-primary hover:bg-emerald-50 rounded-lg transition-colors">
+                    <i class="ph-bold ph-list text-xl"></i>
+                </button>
+
+                 <button id="btn-back-global" onclick="window.exitGlobalView()" class="hidden p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors">
+                    <i class="ph-bold ph-arrow-left text-xl"></i>
+                </button>
+
+                <div id="header-doc-controls" class="w-full group">
+                    <input type="text" id="doc-title-input" 
+                        class="text-xl font-bold text-gray-800 bg-transparent border-none focus:ring-0 focus:outline-none w-full placeholder-gray-300 transition-colors tracking-tight" 
+                        placeholder="Expression Summary (e.g. 'Asking for help')"
+                        oninput="window.updateCurrentDocTitle()">
+                    <div id="header-meta-info" class="flex items-center gap-2 text-xs text-gray-400 mt-1"></div>
+                </div>
+
+                <div id="header-global-title" class="hidden items-center gap-3 text-lg font-bold text-slate-700">
+                    <div class="p-1.5 bg-emerald-100 text-emerald-600 rounded-md">
+                        <i class="ph-fill ph-squares-four"></i>
+                    </div>
+                    Expression Library
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div id="doc-mode-toggles" class="flex p-1 bg-gray-100 rounded-lg border border-gray-200">
+                    <button id="mode-view" onclick="window.setMode('view')" class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-900">
+                        <i class="ph-bold ph-eye"></i> View
+                    </button>
+                    <button id="mode-note" onclick="window.setMode('note')" class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-900">
+                        <i class="ph-bold ph-highlighter-circle"></i> Note
+                    </button>
+                    <button id="mode-edit" onclick="window.setMode('edit')" class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-900">
+                        <i class="ph-bold ph-pencil-simple"></i> Edit
+                    </button>
+                </div>
+
+                <div class="w-px h-6 bg-gray-200"></div>
+
+                <button id="btn-global-view" onclick="window.enterGlobalView()" class="text-gray-500 hover:text-primary hover:bg-primaryLight p-2 rounded-lg transition-colors">
+                    <i class="ph-bold ph-squares-four text-xl"></i>
+                </button>
+
+                <div id="doc-actions" class="flex items-center gap-1">
+                    <button onclick="window.exportMarkdown()" class="text-gray-400 hover:text-slate-700 p-2 rounded-lg hover:bg-gray-100 transition-colors">
+                        <i class="ph-bold ph-file-md text-xl"></i>
+                    </button>
+                    <button onclick="window.deleteCurrentDoc()" class="text-gray-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors">
+                        <i class="ph-bold ph-trash text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex-1 overflow-hidden relative flex bg-gray-50">
+            
+            <div id="view-global" class="hidden w-full h-full overflow-y-auto p-8 animate-in fade-in duration-300">
+                <div class="max-w-7xl mx-auto">
+                    <div class="flex justify-between items-end mb-8 border-b border-gray-100 pb-4">
+                        <div>
+                            <h2 class="text-3xl font-bold text-gray-800 tracking-tight">Library</h2>
+                            <p class="text-gray-500 text-sm mt-1" id="global-stats-text">Refining your expressions</p>
+                        </div>
+                    </div>
+                    <div id="global-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 pb-20"></div>
+                    <div id="global-empty" class="hidden flex flex-col items-center justify-center py-20 text-center">
+                        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 text-gray-400">
+                            <i class="ph ph-magnifying-glass text-3xl"></i>
+                        </div>
+                        <h3 class="text-lg font-medium text-gray-900">No expressions found</h3>
+                        <button onclick="window.createNewDoc()" class="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-emerald-700 transition shadow-sm">Add Expression</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-editor" class="flex-1 flex flex-col h-full overflow-y-auto hidden bg-gray-50">
+                <div class="max-w-4xl mx-auto w-full p-8 pb-32 space-y-6">
+                    
+                    <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm grid grid-cols-2 gap-6">
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">Category</label>
+                            <div class="relative">
+                                <select id="input-category" 
+                                    class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:bg-white focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all appearance-none"
+                                    onchange="window.saveContent()">
+                                    </select>
+                                <i class="ph-bold ph-caret-down absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs"></i>
+                            </div>
+                            <div class="text-[10px] text-gray-400 text-right cursor-pointer hover:text-primary" onclick="window.openCategoryManager()">+ Manage Categories</div>
+                        </div>
+                        <div class="space-y-1.5">
+                             <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">Tags</label>
+                             <div class="relative">
+                                <input type="text" id="input-tags"
+                                    class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:bg-white focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                                    placeholder="e.g. business, casual, idioms"
+                                    onchange="window.saveContent()"
+                                    onblur="window.saveContent()">
+                             </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="space-y-2">
+                            <label class="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
+                                <i class="ph-bold ph-translate text-indigo-500"></i> Intended Meaning (Chinese)
+                            </label>
+                            <input type="text" id="input-chinese" 
+                                class="w-full p-4 rounded-xl border border-gray-200 bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 outline-none font-medium text-gray-800 shadow-sm transition-all" 
+                                placeholder="输入中文原意..."
+                                oninput="window.saveContent()">
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="space-y-2">
+                                <label class="flex items-center gap-2 text-xs font-bold text-red-500 uppercase tracking-wider ml-1">
+                                    <i class="ph-bold ph-x-circle"></i> Common Mistake / Intuition
+                                </label>
+                                <textarea id="input-mistake" rows="3"
+                                    class="w-full p-4 rounded-xl border border-red-200 bg-red-50/20 focus:border-red-500 focus:ring-4 focus:ring-red-50 outline-none resize-none font-medium text-gray-700 shadow-sm transition-all" 
+                                    placeholder="Enter the wrong or Chinglish expression..."
+                                    oninput="window.saveContent()"></textarea>
+                            </div>
+                            
+                            <div class="space-y-2">
+                                <label class="flex items-center gap-2 text-xs font-bold text-emerald-600 uppercase tracking-wider ml-1">
+                                    <i class="ph-bold ph-check-circle"></i> Native / Natural
+                                </label>
+                                <textarea id="input-native" rows="3"
+                                    class="w-full p-4 rounded-xl border border-emerald-200 bg-emerald-50/20 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-50 outline-none resize-none font-bold text-gray-800 shadow-sm transition-all" 
+                                    placeholder="Enter the correct, natural expression..."
+                                    oninput="window.saveContent()"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
+                            <i class="ph-bold ph-article text-gray-600"></i> Detailed Explanation (Markdown)
+                        </label>
+                        <textarea id="input-explanation" 
+                            class="w-full h-[400px] p-5 rounded-xl border border-gray-200 bg-white focus:border-primary focus:ring-4 focus:ring-primaryLight outline-none resize-none font-mono text-sm leading-relaxed shadow-sm transition-all" 
+                            placeholder="Why is the mistake wrong? What is the nuance of the native expression?..."
+                            oninput="window.saveContent()"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-preview" class="flex-1 h-full overflow-y-auto bg-white hidden scroll-smooth">
+                <div id="note-mode-banner" class="hidden sticky top-0 z-10 bg-yellow-100 border-b border-yellow-200 px-4 py-2 text-center text-xs font-bold text-yellow-800 uppercase tracking-widest shadow-sm">
+                    <i class="ph-fill ph-pencil-simple"></i> Annotation Mode: Select text in the "Native" or "Analysis" sections.
+                </div>
+
+                <div class="max-w-3xl mx-auto py-12 px-8 pb-40">
+                    <div id="render-area" class="space-y-10"></div>
+                </div>
+            </div>
+        </div>
+
+        <button id="selection-toolbar" onclick="window.initiateAnnotation()">
+            <div class="flex items-center gap-2">
+                <i class="ph-fill ph-highlighter-circle text-yellow-400 text-lg"></i> 
+                <span>Add Note</span>
+            </div>
+        </button>
+    </main>
+
+    <aside id="annotation-drawer" class="w-[400px] bg-white border-l border-gray-200 flex flex-col flex-shrink-0 transform translate-x-full transition-transform duration-300 absolute right-0 top-0 bottom-0 shadow-2xl z-50">
+        <div class="h-16 border-b border-gray-100 flex items-center justify-between px-5 bg-gray-50/50">
+            <h2 class="font-bold text-gray-800 flex items-center gap-2">
+                <i class="ph-fill ph-notebook text-primary"></i> Notes
+            </h2>
+            <button onclick="window.closeDrawer()" class="text-gray-400 hover:text-gray-700 p-1 rounded-md hover:bg-gray-200 transition">
+                <i class="ph-bold ph-x text-lg"></i>
+            </button>
+        </div>
+        <div id="annotation-editor-panel" class="p-5 border-b border-gray-100 hidden bg-emerald-50/30">
+            <div class="flex justify-between items-center mb-3">
+                <span id="editor-mode-label" class="text-xs font-bold text-primary uppercase tracking-wider">Adding Note</span>
+            </div>
+            <div id="selected-text-display" class="text-sm font-medium text-gray-800 bg-white p-3 rounded-lg border border-emerald-100 mb-3 shadow-sm italic border-l-4 border-l-primary"></div>
+            <textarea id="annotation-input" rows="5" class="w-full p-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primaryLight focus:border-primary outline-none transition-shadow mb-3 resize-none font-mono" placeholder="Add context or grammar notes..."></textarea>
+            <div class="flex justify-end gap-2">
+                <button onclick="window.cancelAnnotation()" class="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 rounded-md transition">Cancel</button>
+                <button onclick="window.saveAnnotation()" class="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-md hover:bg-emerald-700 shadow-sm transition" id="save-anno-btn">Save</button>
+            </div>
+        </div>
+        <div id="annotation-list" class="flex-1 overflow-y-auto p-5 space-y-4"></div>
+    </aside>
+
+    <div id="category-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center">
+        <div class="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity" onclick="window.closeCategoryManager()"></div>
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <h3 class="font-bold text-gray-800 text-lg">Manage Categories</h3>
+                <button onclick="window.closeCategoryManager()" class="text-gray-400 hover:text-gray-600"><i class="ph-bold ph-x"></i></button>
+            </div>
+            <div class="p-6">
+                <div class="flex gap-2 mb-6">
+                    <input type="text" id="new-cat-input" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none" placeholder="New Category Name...">
+                    <button onclick="window.addCategory()" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm font-medium transition shadow-sm">Add</button>
+                </div>
+                <div class="space-y-2 max-h-[300px] overflow-y-auto pr-1" id="category-manager-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA STRUCTURE & CONFIG ---
+        const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
+        const STORAGE_KEY = 'bri_fix_pro_v1';
+        const DEFAULT_CAT = 'General';
+
+        let appState = {
+            docs: [],
+            activeDocId: null,
+            categories: ['General', 'Business', 'Daily Life', 'Academic'], 
+            ui: {
+                mode: 'view', 
+                globalMode: false,
+                drawerOpen: false,
+                sidebarOpen: true,
+                editingAnnotationId: null,
+                searchQuery: '',
+                searchCategory: '',
+                searchTag: ''
+            }
+        };
+
+        let tempSelection = { text: '', range: null };
+
+        // --- APP INITIALIZATION ---
+        function initApp() {
+            marked.use({ breaks: true, gfm: true });
+            const savedData = localStorage.getItem(STORAGE_KEY);
+            if (savedData) {
+                try {
+                    const parsed = JSON.parse(savedData);
+                    appState = { ...appState, ...parsed };
+                    // Migration check
+                    appState.docs.forEach(d => { if(!d.tags) d.tags = []; });
+                    appState.ui.mode = 'view';
+                    appState.ui.sidebarOpen = true;
+                } catch (e) { console.error(e); }
+            } else {
+                createMockData();
+            }
+
+            appState.ui.drawerOpen = false;
+            appState.ui.editingAnnotationId = null;
+            appState.ui.globalMode = false;
+            
+            if (appState.docs.length > 0) {
+                if (!appState.docs.find(d => d.id === appState.activeDocId)) appState.activeDocId = appState.docs[0].id;
+                window.loadDoc(appState.activeDocId);
+            } else {
+                window.createNewDoc();
+            }
+            
+            window.updateCategoryDropdowns();
+            window.updateTagDropdown();
+            window.renderDocList();
+            window.setMode('view'); 
+        }
+
+        window.addEventListener('DOMContentLoaded', initApp);
+
+        // ===== Cloud Sync =====
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!window.SyncWidget) return;
+
+            window.SyncWidget.mount({
+                app: 'expressing',
+                collections: {
+                    docs: {
+                        read: () => appState.docs,
+                        getId: d => d.id,
+                        getUpdatedAt: d => Number(d.updatedAt) || 0,
+                        applyChanges: (changes) => {
+                            let changed = false;
+                            for (const ch of changes) {
+                                const idx = appState.docs.findIndex(d => d.id === ch.id);
+                                if (ch.op === 'delete') {
+                                    if (idx !== -1) { appState.docs.splice(idx, 1); changed = true; }
+                                    continue;
+                                }
+                                if (!ch.data) continue;
+                                const incoming = {
+                                    ...ch.data,
+                                    updatedAt: Math.max(Number(ch.data.updatedAt) || 0, Number(ch.updatedAt) || 0)
+                                };
+                                if (idx === -1) {
+                                    appState.docs.push(incoming);
+                                    changed = true;
+                                } else if (Number(incoming.updatedAt) > Number(appState.docs[idx].updatedAt || 0)) {
+                                    appState.docs[idx] = incoming;
+                                    changed = true;
+                                }
+                            }
+                            if (changed) {
+                                if (!appState.docs.find(d => d.id === appState.activeDocId)) {
+                                    appState.activeDocId = appState.docs.length ? appState.docs[0].id : null;
+                                }
+                                window.persistState();
+                            }
+                            return changed;
+                        }
+                    },
+                    settings: {
+                        read: () => [{
+                            id: '__singleton__',
+                            categories: appState.categories,
+                            updatedAt: Number(appState.__categoriesUpdatedAt) || 0
+                        }],
+                        getId: r => r.id,
+                        getUpdatedAt: r => Number(r.updatedAt) || 0,
+                        applyChanges: (changes) => {
+                            let changed = false;
+                            for (const ch of changes) {
+                                if (ch.op === 'delete' || !ch.data || !Array.isArray(ch.data.categories)) continue;
+                                if (JSON.stringify(ch.data.categories) === JSON.stringify(appState.categories)) continue;
+                                appState.categories = ch.data.categories;
+                                appState.__categoriesUpdatedAt = ch.updatedAt;
+                                changed = true;
+                            }
+                            if (changed) {
+                                window.updateCategoryDropdowns();
+                                window.persistState();
+                            }
+                            return changed;
+                        }
+                    }
+                },
+                onApplied: () => {
+                    window.updateCategoryDropdowns();
+                    window.renderDocList();
+                    if (appState.activeDocId) window.loadDoc(appState.activeDocId);
+                }
+            });
+        });
+
+        function createMockData() {
+            const mockDoc = {
+                id: generateId(),
+                title: 'Expressing Strong Preference',
+                category: 'Daily Life',
+                tags: ['preference', 'basic'],
+                // NEW FIELDS
+                chinese: '我非常喜欢这个主意。',
+                mistake: 'I very like this idea.',
+                native: 'I really like this idea. / I\'m really into this idea.',
+                explanation: '### Grammar Point\n\nIn English, we rarely use "very" directly before a verb like "like" or "love". \n\n* **Incorrect**: I very like...\n* **Correct**: I really like... / I like ... very much.\n\n"Into" is a more casual way to say you are interested in something.',
+                annotations: [
+                    { id: generateId(), text: 'into', note: 'Phrasal verb: To be interested in or enthusiastic about something.'}
+                ],
+                updatedAt: Date.now()
+            };
+            appState.docs = [mockDoc];
+            window.persistState();
+        }
+
+        window.persistState = function() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+        }
+
+        // --- SIDEBAR & NAVIGATION ---
+        window.toggleSidebar = function() {
+            const body = document.getElementById('app-body');
+            appState.ui.sidebarOpen = !appState.ui.sidebarOpen;
+            if(appState.ui.sidebarOpen) body.classList.remove('sidebar-closed');
+            else body.classList.add('sidebar-closed');
+        }
+
+        window.updateTagDropdown = function() {
+            const allTags = new Set();
+            appState.docs.forEach(doc => {
+                if(doc.tags) doc.tags.forEach(t => allTags.add(t));
+            });
+            const sortedTags = Array.from(allTags).sort();
+            const select = document.getElementById('sidebar-tags');
+            const current = select.value;
+            select.innerHTML = '<option value="">All Tags</option>' + 
+                sortedTags.map(t => `<option value="${t}">${t}</option>`).join('');
+            if(sortedTags.includes(current)) select.value = current;
+        }
+
+        window.updateCategoryDropdowns = function() {
+            const sidebarSelect = document.getElementById('sidebar-category');
+            const editorSelect = document.getElementById('input-category');
+            const currentFilter = sidebarSelect.value;
+            
+            const options = appState.categories.map(c => `<option value="${c}">${c}</option>`).join('');
+            
+            sidebarSelect.innerHTML = '<option value="">All Categories</option>' + options;
+            if (appState.categories.includes(currentFilter)) sidebarSelect.value = currentFilter;
+
+            if(editorSelect) {
+                editorSelect.innerHTML = options;
+                const doc = appState.docs.find(d => d.id === appState.activeDocId);
+                if(doc && appState.categories.includes(doc.category)) editorSelect.value = doc.category;
+            }
+        }
+
+        // --- CRUD OPERATIONS ---
+        window.createNewDoc = function() {
+            const newDoc = {
+                id: generateId(),
+                title: 'New Correction',
+                category: 'General',
+                tags: [],
+                chinese: '',
+                mistake: '',
+                native: '',
+                explanation: '',
+                annotations: [],
+                updatedAt: Date.now()
+            };
+            appState.docs.unshift(newDoc);
+            if(appState.ui.globalMode) window.exitGlobalView();
+            window.loadDoc(newDoc.id);
+            window.setMode('edit');
+            window.renderDocList();
+            window.persistState();
+            setTimeout(() => document.getElementById('doc-title-input').select(), 100);
+        }
+
+        window.loadDoc = function(id) {
+            appState.activeDocId = id;
+            const doc = appState.docs.find(d => d.id === id);
+            if (!doc) return;
+            if (!doc.tags) doc.tags = [];
+
+            // Bind to inputs
+            document.getElementById('doc-title-input').value = doc.title;
+            document.getElementById('input-chinese').value = doc.chinese || '';
+            document.getElementById('input-mistake').value = doc.mistake || '';
+            document.getElementById('input-native').value = doc.native || '';
+            document.getElementById('input-explanation').value = doc.explanation || '';
+            document.getElementById('input-tags').value = doc.tags.join(', ');
+            document.getElementById('input-category').value = doc.category;
+
+            window.renderDocList();
+            if (appState.ui.mode !== 'edit') {
+                window.renderPreview();
+                window.renderAnnotationsSidebar();
+            }
+        }
+
+        window.saveContent = function() {
+            const doc = appState.docs.find(d => d.id === appState.activeDocId);
+            if (!doc) return;
+
+            doc.chinese = document.getElementById('input-chinese').value;
+            doc.mistake = document.getElementById('input-mistake').value;
+            doc.native = document.getElementById('input-native').value;
+            doc.explanation = document.getElementById('input-explanation').value;
+            doc.category = document.getElementById('input-category').value;
+            
+            const tagsVal = document.getElementById('input-tags').value;
+            doc.tags = tagsVal.split(',').map(t => t.trim()).filter(t => t.length > 0);
+            
+            doc.updatedAt = Date.now();
+            window.updateTagDropdown();
+            window.renderDocList();
+            window.persistState();
+        }
+
+        window.updateCurrentDocTitle = function() {
+            const doc = appState.docs.find(d => d.id === appState.activeDocId);
+            if (doc) {
+                doc.title = document.getElementById('doc-title-input').value || "Untitled";
+                doc.updatedAt = Date.now();
+                window.renderDocList();
+                window.persistState();
+            }
+        }
+
+        window.deleteCurrentDoc = function() {
+            if(!confirm("Delete this expression?")) return;
+            appState.docs = appState.docs.filter(d => d.id !== appState.activeDocId);
+            if(appState.docs.length > 0) window.loadDoc(appState.docs[0].id);
+            else window.createNewDoc();
+            window.updateTagDropdown();
+            window.persistState();
+        }
+
+        // --- MODES & VIEW ---
+        window.setMode = function(mode) {
+            appState.ui.mode = mode;
+            // Update Toggle Styles
+            ['view', 'note', 'edit'].forEach(m => {
+                const btn = document.getElementById(`mode-${m}`);
+                if (mode === m) btn.className = "flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all bg-white shadow-sm text-gray-900";
+                else btn.className = "flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-900";
+            });
+
+            window.closeDrawer();
+            document.getElementById('selection-toolbar').style.display = 'none';
+            const viewEditor = document.getElementById('view-editor');
+            const viewPreview = document.getElementById('view-preview');
+            const noteBanner = document.getElementById('note-mode-banner');
+
+            if (mode === 'edit') {
+                viewEditor.classList.remove('hidden');
+                viewPreview.classList.add('hidden');
+                noteBanner.classList.add('hidden');
+            } else {
+                viewEditor.classList.add('hidden');
+                viewPreview.classList.remove('hidden');
+                document.getElementById('render-area').className = `space-y-10 ${mode === 'view' ? 'mode-view' : 'mode-note'}`;
+                
+                if (mode === 'note') {
+                    noteBanner.classList.remove('hidden');
+                    window.attachSelectionListener();
+                } else {
+                    noteBanner.classList.add('hidden');
+                    const container = document.getElementById('view-preview');
+                    container.onmouseup = null;
+                    container.onkeyup = null;
+                }
+                window.saveContent();
+                window.renderPreview();
+                window.renderAnnotationsSidebar();
+            }
+        }
+
+        // --- RENDERING & LOGIC ---
+        window.getFilteredDocs = function() {
+            const { searchQuery, searchCategory, searchTag } = appState.ui;
+            return appState.docs.filter(doc => {
+                if (searchCategory && doc.category !== searchCategory) return false;
+                if (searchTag && (!doc.tags || !doc.tags.includes(searchTag))) return false;
+                if (!searchQuery) return true;
+                const q = searchQuery.toLowerCase();
+                return doc.title.toLowerCase().includes(q) || 
+                       (doc.native || '').toLowerCase().includes(q) ||
+                       (doc.chinese || '').includes(q);
+            });
+        }
+
+        window.renderDocList = function() {
+            const list = document.getElementById('doc-list');
+            const docs = window.getFilteredDocs();
+            if (docs.length === 0) { list.innerHTML = `<div class="text-center text-xs text-gray-400 py-4">No expressions found.</div>`; return; }
+
+            list.innerHTML = docs.map(doc => {
+                const isActive = appState.activeDocId === doc.id && !appState.ui.globalMode;
+                const tagsHtml = doc.tags && doc.tags.length > 0 
+                    ? `<div class="flex flex-wrap gap-1 mt-1">${doc.tags.map(t => `<span class="text-[9px] px-1 bg-gray-100 text-gray-500 rounded border border-gray-200">#${t}</span>`).join('')}</div>` : '';
+
+                return `
+                <div onclick="window.loadDoc('${doc.id}')" 
+                     class="group p-3 rounded-lg cursor-pointer transition-all border ${isActive ? 'bg-emerald-50 border-emerald-200 shadow-sm' : 'bg-transparent border-transparent hover:bg-gray-50 hover:border-gray-100'}">
+                    <div class="flex items-start justify-between mb-1">
+                        <div class="font-medium text-sm ${isActive ? 'text-primary' : 'text-gray-700'} truncate flex-1 pr-2">${doc.title}</div>
+                    </div>
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-[10px] px-1.5 py-0.5 rounded font-medium ${isActive ? 'bg-white text-primary border border-emerald-100' : 'bg-gray-100 text-gray-500'}">${doc.category}</span>
+                        <span class="text-[10px] text-gray-400 ml-auto">${new Date(doc.updatedAt).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</span>
+                    </div>
+                    ${tagsHtml}
+                </div>`;
+            }).join('');
+        }
+
+        window.renderPreview = function() {
+            const doc = appState.docs.find(d => d.id === appState.activeDocId);
+            if(!doc) return;
+
+            // Metadata Header
+            const tagsHtml = doc.tags.map(t => `<span class="text-[10px] text-gray-500 px-1.5 py-0.5 bg-gray-100 rounded">#${t}</span>`).join('');
+            document.getElementById('header-meta-info').innerHTML = `
+                <span class="px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">${doc.category}</span>
+                <div class="flex gap-1">${tagsHtml}</div>
+            `;
+
+            // Prepare Content with Highlight Logic
+            let nativeHtml = doc.native || '';
+            let explanationHtml = marked.parse(doc.explanation || '');
+
+            const wrapText = (html, text, id) => {
+                if(!text) return html;
+                let pattern = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                pattern = pattern.replace(/\s+/g, '[\\s\\n]+');
+                try {
+                    // Match text outside of HTML tags
+                    const regex = new RegExp(`(${pattern})(?![^<]*>)`, 'gi');
+                    return html.replace(regex, `<span class="bri-highlight" onclick="window.handleAnnotationClick('${id}', event)" data-id="${id}">$1</span>`);
+                } catch (e) { return html; }
+            };
+
+            // Apply highlights to Native and Explanation
+            const sortedAnnos = [...doc.annotations].sort((a,b) => b.text.length - a.text.length);
+            sortedAnnos.forEach(anno => {
+                nativeHtml = wrapText(nativeHtml, anno.text, anno.id);
+                explanationHtml = wrapText(explanationHtml, anno.text, anno.id);
+            });
+
+            // Render Layout
+            const renderArea = document.getElementById('render-area');
+            renderArea.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div class="bg-gray-50 border-b border-gray-200 px-6 py-4">
+                        <div class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Target Meaning</div>
+                        <div class="text-lg font-medium text-gray-900">${doc.chinese || '<span class="text-gray-300 italic">No Chinese translation provided</span>'}</div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+                        <div class="p-6 bg-red-50/10 group hover:bg-red-50/30 transition-colors">
+                            <div class="flex items-center gap-2 mb-3">
+                                <i class="ph-fill ph-x-circle text-red-500 text-xl"></i>
+                                <span class="text-xs font-bold text-red-500 uppercase tracking-wider">Avoid Saying</span>
+                            </div>
+                            <div class="text-gray-600 font-medium line-through decoration-red-300 decoration-2 decoration-wavy opacity-80 select-text-area">
+                                ${doc.mistake || '...'}
+                            </div>
+                        </div>
+                        <div class="p-6 bg-emerald-50/10 group hover:bg-emerald-50/30 transition-colors relative">
+                            <div class="flex items-center gap-2 mb-3">
+                                <i class="ph-fill ph-check-circle text-emerald-600 text-xl"></i>
+                                <span class="text-xs font-bold text-emerald-600 uppercase tracking-wider">Natural Expression</span>
+                            </div>
+                            <div class="text-lg font-bold text-gray-800 leading-relaxed select-text-area" id="preview-native-text">
+                                ${nativeHtml || '...'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="relative group">
+                     <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <i class="ph-fill ph-info"></i> Analysis & Nuance
+                    </h2>
+                    <div class="prose prose-slate prose-emerald max-w-none text-gray-700 selection:bg-emerald-100 select-text-area">
+                        ${explanationHtml}
+                    </div>
+                </div>
+            `;
+            if (appState.ui.mode === 'note') window.attachSelectionListener();
+        }
+
+        window.renderGlobalGrid = function() {
+            const grid = document.getElementById('global-grid');
+            const empty = document.getElementById('global-empty');
+            const docs = window.getFilteredDocs();
+
+            document.getElementById('global-stats-text').textContent = `${docs.length} expression${docs.length!==1?'s':''} saved`;
+
+            if(docs.length === 0) { grid.innerHTML = ''; empty.classList.remove('hidden'); return; }
+            empty.classList.add('hidden');
+
+            grid.innerHTML = docs.map(doc => {
+                const tagsHtml = doc.tags && doc.tags.length > 0 ? `<div class="flex flex-wrap gap-1 mb-3">${doc.tags.slice(0,3).map(t => `<span class="text-[10px] px-1.5 py-0.5 bg-gray-50 text-gray-500 rounded border border-gray-100">#${t}</span>`).join('')}</div>` : '';
+                return `
+                <div onclick="window.openDocFromGlobal('${doc.id}')" class="bg-white border border-gray-200 rounded-2xl p-5 cursor-pointer hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col group relative overflow-hidden h-72">
+                    <div class="absolute top-0 left-0 w-1 h-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="flex justify-between items-start mb-2">
+                         <span class="px-2 py-0.5 bg-gray-50 text-gray-600 text-[10px] font-bold rounded uppercase tracking-wider border border-gray-100">${doc.category}</span>
+                    </div>
+                    ${tagsHtml}
+                    <h3 class="font-bold text-gray-800 mb-2 truncate">${doc.title}</h3>
+                    
+                    <div class="flex-1 space-y-3 mt-1 overflow-hidden">
+                        <div class="text-xs text-gray-400 mb-1">Target: ${doc.chinese}</div>
+                        <div class="p-2 bg-red-50 rounded text-xs text-red-600 line-through decoration-red-300 truncate opacity-70">
+                            ${doc.mistake || '-'}
+                        </div>
+                        <div class="p-2 bg-emerald-50 rounded text-sm text-emerald-700 font-semibold shadow-sm border border-emerald-100">
+                            ${doc.native || '-'}
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+                        <div class="flex items-center gap-1 ${doc.annotations.length > 0 ? 'text-primary font-medium' : ''}">
+                            <i class="ph-fill ph-notebook"></i> ${doc.annotations.length} Notes
+                        </div>
+                        <div class="text-primary opacity-0 group-hover:opacity-100 transition-opacity font-bold">Edit <i class="ph-bold ph-arrow-right"></i></div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        window.openDocFromGlobal = function(id) { window.loadDoc(id); window.exitGlobalView(); }
+        window.enterGlobalView = function() {
+            appState.ui.globalMode = true;
+            document.getElementById('view-global').classList.remove('hidden');
+            document.getElementById('view-editor').classList.add('hidden');
+            document.getElementById('view-preview').classList.add('hidden');
+            document.getElementById('header-doc-controls').classList.add('hidden');
+            document.getElementById('doc-mode-toggles').classList.add('hidden');
+            document.getElementById('doc-actions').classList.add('hidden');
+            document.getElementById('btn-global-view').classList.add('hidden');
+            document.getElementById('header-global-title').classList.remove('hidden');
+            document.getElementById('header-global-title').classList.add('flex');
+            document.getElementById('btn-back-global').classList.remove('hidden');
+            window.renderGlobalGrid();
+        }
+        window.exitGlobalView = function() {
+            appState.ui.globalMode = false;
+            document.getElementById('view-global').classList.add('hidden');
+            if(appState.ui.mode === 'edit') document.getElementById('view-editor').classList.remove('hidden');
+            else document.getElementById('view-preview').classList.remove('hidden');
+            document.getElementById('header-doc-controls').classList.remove('hidden');
+            document.getElementById('doc-mode-toggles').classList.remove('hidden');
+            document.getElementById('doc-actions').classList.remove('hidden');
+            document.getElementById('btn-global-view').classList.remove('hidden');
+            document.getElementById('header-global-title').classList.add('hidden');
+            document.getElementById('header-global-title').classList.remove('flex');
+            document.getElementById('btn-back-global').classList.add('hidden');
+        }
+
+        // --- ANNOTATION LOGIC ---
+        window.attachSelectionListener = function() {
+            const container = document.getElementById('view-preview');
+            const toolbar = document.getElementById('selection-toolbar');
+            
+            const handleSelect = () => {
+                const selection = window.getSelection();
+                if (selection.rangeCount === 0) return;
+                
+                // Ensure selection is within render area
+                const renderArea = document.getElementById('render-area');
+                if (!renderArea.contains(selection.anchorNode)) return;
+
+                const text = selection.toString().trim();
+                if (text.length > 0 && !selection.isCollapsed) {
+                    const range = selection.getRangeAt(0);
+                    const rect = range.getBoundingClientRect();
+                    toolbar.style.top = `${rect.top - 50}px`; 
+                    toolbar.style.left = `${rect.left + (rect.width / 2)}px`;
+                    toolbar.style.display = 'block';
+                    tempSelection.text = text;
+                } else {
+                    toolbar.style.display = 'none';
+                }
+            };
+            container.onmouseup = handleSelect;
+            container.onkeyup = handleSelect; 
+        }
+
+        window.initiateAnnotation = function() {
+            document.getElementById('selection-toolbar').style.display = 'none';
+            appState.ui.editingAnnotationId = null;
+            window.openDrawer(true);
+        }
+
+        window.handleAnnotationClick = function(id, event) {
+            if(event) event.stopPropagation();
+            document.querySelectorAll('.bri-highlight').forEach(el => el.classList.remove('active'));
+            if(event && event.target) event.target.classList.add('active');
+            
+            if (appState.ui.mode === 'view') { 
+                window.openDrawer(false); 
+                window.scrollToNoteCard(id); 
+            } else if (appState.ui.mode === 'note') { 
+                window.editAnnotationStart(id); 
+            }
+        }
+
+        window.saveAnnotation = function() {
+            const content = document.getElementById('annotation-input').value;
+            if(!content) return;
+            const doc = appState.docs.find(d => d.id === appState.activeDocId);
+            if(appState.ui.editingAnnotationId) {
+                const idx = doc.annotations.findIndex(a => a.id === appState.ui.editingAnnotationId);
+                if(idx !== -1) doc.annotations[idx].note = content;
+            } else {
+                doc.annotations.push({ id: generateId(), text: tempSelection.text, note: content });
+            }
+            window.cancelAnnotation();
+            window.renderPreview();
+            window.renderAnnotationsSidebar();
+            window.persistState();
+        }
+
+        window.deleteAnnotation = function(id) {
+            const doc = appState.docs.find(d => d.id === appState.activeDocId);
+            doc.annotations = doc.annotations.filter(a => a.id !== id);
+            window.renderPreview();
+            window.renderAnnotationsSidebar();
+            window.persistState();
+        }
+
+        window.editAnnotationStart = function(id) {
+            const doc = appState.docs.find(d => d.id === appState.activeDocId);
+            const anno = doc.annotations.find(a => a.id === id);
+            if(!anno) return;
+            appState.ui.editingAnnotationId = id;
+            tempSelection.text = anno.text;
+            document.getElementById('annotation-input').value = anno.note;
+            document.getElementById('editor-mode-label').textContent = "Editing Note";
+            document.getElementById('save-anno-btn').textContent = "Update";
+            window.openDrawer(true);
+        }
+
+        window.openDrawer = function(showEditor) {
+            const drawer = document.getElementById('annotation-drawer');
+            drawer.classList.remove('translate-x-full');
+            const panel = document.getElementById('annotation-editor-panel');
+            if(showEditor) {
+                panel.classList.remove('hidden');
+                document.getElementById('selected-text-display').textContent = tempSelection.text;
+                document.getElementById('annotation-input').focus();
+            } else {
+                panel.classList.add('hidden');
+            }
+        }
+
+        window.closeDrawer = function() {
+            document.getElementById('annotation-drawer').classList.add('translate-x-full');
+            document.querySelectorAll('.bri-highlight').forEach(el => el.classList.remove('active'));
+            window.cancelAnnotation();
+        }
+        
+        window.cancelAnnotation = function() {
+            appState.ui.editingAnnotationId = null;
+            document.getElementById('annotation-editor-panel').classList.add('hidden');
+            document.getElementById('annotation-input').value = '';
+            document.getElementById('editor-mode-label').textContent = "Adding Note";
+            document.getElementById('save-anno-btn').textContent = "Save";
+        }
+
+        window.scrollToNoteCard = function(id) {
+            setTimeout(() => {
+                const el = document.getElementById(`sidebar-anno-${id}`);
+                if(el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.classList.add('ring-2', 'ring-primary');
+                    setTimeout(() => el.classList.remove('ring-2', 'ring-primary'), 1500);
+                }
+            }, 100);
+        }
+
+        window.renderAnnotationsSidebar = function() {
+            const list = document.getElementById('annotation-list');
+            const doc = appState.docs.find(d => d.id === appState.activeDocId);
+            if(!doc || doc.annotations.length === 0) {
+                list.innerHTML = `<div class="text-center mt-12 text-gray-400 italic text-sm">No notes added.</div>`;
+                return;
+            }
+            list.innerHTML = doc.annotations.map(anno => `
+            <div id="sidebar-anno-${anno.id}" class="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-all group">
+                <div class="flex justify-between items-start mb-2">
+                <span class="text-xs font-bold text-gray-800 bg-yellow-100 px-2 py-0.5 rounded border border-yellow-200 truncate max-w-[180px]">${anno.text}</span>
+                <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onclick="window.editAnnotationStart('${anno.id}')" class="p-1 text-gray-400 hover:text-primary"><i class="ph-bold ph-pencil-simple"></i></button>
+                    <button onclick="window.deleteAnnotation('${anno.id}')" class="p-1 text-gray-400 hover:text-red-500"><i class="ph-bold ph-trash"></i></button>
+                </div>
+                </div>
+                <div class="text-sm text-gray-600 leading-relaxed prose prose-sm">${marked.parse(anno.note)}</div>
+            </div>`).join('');
+        }
+
+        // --- SEARCH, IMPORT, EXPORT ---
+        window.handleSearch = function() {
+            appState.ui.searchQuery = document.getElementById('sidebar-search').value;
+            appState.ui.searchCategory = document.getElementById('sidebar-category').value;
+            appState.ui.searchTag = document.getElementById('sidebar-tags').value;
+            window.renderDocList();
+            if(appState.ui.globalMode) window.renderGlobalGrid();
+        }
+
+        window.openCategoryManager = function() {
+            document.getElementById('category-modal').classList.remove('hidden');
+            document.getElementById('category-manager-list').innerHTML = appState.categories.map(cat => `
+                <div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
+                    <span class="text-sm font-medium">${cat}</span>
+                    ${cat !== 'General' ? `<button onclick="window.deleteCategory('${cat}')" class="text-gray-400 hover:text-red-500"><i class="ph-bold ph-trash"></i></button>` : ''}
+                </div>
+            `).join('');
+        }
+        window.closeCategoryManager = function() { document.getElementById('category-modal').classList.add('hidden'); }
+        window.addCategory = function() {
+            const val = document.getElementById('new-cat-input').value.trim();
+            if(val && !appState.categories.includes(val)) {
+                appState.categories.push(val);
+                window.updateCategoryDropdowns();
+                window.persistState();
+                window.openCategoryManager();
+                document.getElementById('new-cat-input').value = '';
+            }
+        }
+        window.deleteCategory = function(cat) {
+            if(!confirm("Delete category? Files will move to General.")) return;
+            appState.docs.forEach(d => { if(d.category === cat) d.category = 'General'; });
+            appState.categories = appState.categories.filter(c => c !== cat);
+            window.updateCategoryDropdowns();
+            window.persistState();
+            window.openCategoryManager();
+        }
+
+        window.exportBri = function() {
+            const blob = new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `bri-fix-backup-${new Date().toISOString().slice(0,10)}.bri`;
+            a.click();
+        }
+
+        window.triggerImport = function() { document.getElementById('file-input').click(); }
+        window.handleFileImport = function(input) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const loaded = JSON.parse(e.target.result);
+                    if(loaded.docs) { appState = loaded; window.initApp(); alert('Import successful'); }
+                } catch(err) { alert('Invalid file'); }
+            };
+            if(input.files[0]) reader.readAsText(input.files[0]);
+        }
+
+        window.exportMarkdown = function() {
+            const doc = appState.docs.find(d => d.id === appState.activeDocId);
+            if (!doc) return;
+            
+            let md = `# ${doc.title}\n\n`;
+            md += `**Context (Chinese):** ${doc.chinese}\n\n`;
+            md += `| ❌ Avoid (Mistake) | ✅ Natural (Native) |\n| :--- | :--- |\n| ${doc.mistake.replace(/\n/g, ' ')} | **${doc.native.replace(/\n/g, ' ')}** |\n\n`;
+            md += `## Analysis\n\n${doc.explanation}\n\n`;
+            
+            if(doc.annotations.length > 0) {
+                md += `## 📝 Glossary Notes\n\n`;
+                doc.annotations.forEach(a => md += `- **${a.text}**: ${a.note}\n`);
+            }
+
+            const blob = new Blob([md], { type: 'text/markdown' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${doc.title.replace(/\s+/g, '_')}.md`;
+            a.click();
+        }
+    </script>
+</body>
+</html>

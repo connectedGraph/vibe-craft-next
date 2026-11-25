@@ -9,13 +9,17 @@
 
 | 工具 | 入口 | 实现 |
 |---|---|---|
-| Prompt Capsule | `/prompt-capsule` | React，Markdown + 选区黄框标注 |
+| Prompt Capsule | `/prompt-capsule` | React，Markdown + KaTeX + 选中标注 + 文库 + 版本历史 |
 | Contextly | `/contextly` | React（词汇 + 上下文，间隔复习） |
 | Expressing | `/expressing` | React（中文 → 地道英文对比 + 标注） |
 | Desktop Lite | `/desktop-lite` | React（Aura PKM：番茄专注 / 剪贴板 / 日志 / 规划 / 收件箱 / 知识坑） |
 | ADHD Text | `/adhd-text` | React（阅读排版实验） |
 
-五个工具都是 React 组件，共用 `public/shared/sync-client.js` 与同一套 `/api/v1`；本地数据仍存 localStorage，key 与旧版一致（`glass_memory_v2` / `bri_fix_pro_v1` / `aura_pkm_data_v2`），老数据直接可读。
+五个工具都是 React 组件，共用同一套 `/api/v1`；本地数据仍存 localStorage，key 与旧版一致（`bri_app_pro_v2` / `glass_memory_v2` / `bri_fix_pro_v1` / `aura_pkm_data_v2`），老数据直接可读。
+
+**首次使用**：只有在「从来没存过数据」时才会写入引导内容——胶囊是一篇带示例标注的 Welcome 文档，Contextly 是一张 epiphany 卡，Expressing 是一条示例对比，Desktop Lite 自带示例板面与今日日志。用户把内容删光后再进来不会反复塞回（等幂）。
+
+Prompt Capsule 的完整能力：View / Note / Edit 三态；Note 模式选中文字弹出标注按钮，右侧抽屉增改删、点击高亮定位；分类管理（重命名/删除并把文档迁回 General）；文库网格；专注模式；KaTeX 公式；带术语双向链接的 Markdown 导出；`.bri` 导入（先备份再按 id 合并）与导出；云同步面板（连接测试、立即同步、云端备份导入导出、冲突列表）；单文档版本历史。图标为自绘 SVG（书签 + V），含 favicon / 192 / 512 / maskable / apple-touch。
 
 旧的静态页地址（如 `/contextly/index.html`）全部 307 跳到新路由。
 

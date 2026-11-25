@@ -32,6 +32,7 @@ export default function DesktopLiteApp() {
   const [mainTab, setMainTab] = useState(0);
   const [subTab, setSubTab] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileNav, setMobileNav] = useState(false);
   const [aura, setAura] = useState<AuraState>(defaultState);
   const auraRef = useRef<AuraState>(defaultState());
   const [logDate, setLogDate] = useState(() => todayString());
@@ -306,6 +307,7 @@ export default function DesktopLiteApp() {
     playSound("click");
     setMainTab(index);
     setSubTab(0);
+    setMobileNav(false);
   }, []);
 
   const switchSub = useCallback((index: number) => {
@@ -497,6 +499,17 @@ export default function DesktopLiteApp() {
         .aura-prose blockquote { border-left:3px solid #D1D5DB; padding-left:.75rem; color:#6B7280; font-style:italic; }
         .aura-scroll::-webkit-scrollbar { width:4px; height:4px; }
         .aura-scroll::-webkit-scrollbar-thumb { background:#EAEAE2; border-radius:10px; }
+        /* 窄屏：侧栏改为覆盖式抽屉，桌面（≥1024px）保持原布局 */
+        @media (max-width: 1023.98px) {
+          #aura-sidebar {
+            position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
+            width: 16rem !important; min-width: 16rem !important;
+            transform: translateX(-100%); transition: transform .3s cubic-bezier(.16,1,.3,1);
+            box-shadow: 0 24px 60px -20px rgba(15,23,42,.35);
+          }
+          #aura-sidebar.mobile-open { transform: translateX(0); }
+          #aura-collapse-btn { display: none; }
+        }
       `}</style>
       <link
         rel="stylesheet"
@@ -513,7 +526,8 @@ export default function DesktopLiteApp() {
       />
 
       <aside
-        className="relative flex shrink-0 flex-col justify-between border-r border-neutral-200/60 bg-white"
+        id="aura-sidebar"
+        className={`relative flex shrink-0 flex-col justify-between border-r border-neutral-200/60 bg-white ${mobileNav ? "mobile-open" : ""}`}
         style={{ width: collapsed ? 60 : 256, minWidth: 60, transition: "all .3s cubic-bezier(.16,1,.3,1)" }}
       >
         <div>
@@ -561,6 +575,7 @@ export default function DesktopLiteApp() {
 
         <button
           type="button"
+          id="aura-collapse-btn"
           onClick={() => setCollapsed((v) => !v)}
           className="absolute -right-3 top-1/2 z-50 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-200 bg-white text-xs text-neutral-400 shadow-sm transition-all hover:bg-neutral-50 hover:text-neutral-800"
         >
@@ -568,14 +583,32 @@ export default function DesktopLiteApp() {
         </button>
       </aside>
 
+      {mobileNav && (
+        <div
+          className="fixed inset-0 z-50 bg-neutral-900/40 backdrop-blur-[1px] lg:hidden"
+          onClick={() => setMobileNav(false)}
+        />
+      )}
+
       <main className="flex max-h-screen min-w-0 flex-1 flex-col overflow-y-auto">
-        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between border-b border-neutral-200/60 bg-white/50 px-6 backdrop-blur-md">
+        <header className="sticky top-0 z-40 flex shrink-0 flex-wrap items-center justify-between gap-y-2 border-b border-neutral-200/60 bg-white/50 px-3 py-2 backdrop-blur-md lg:h-14 lg:flex-nowrap lg:px-6 lg:py-0">
           <div className="flex items-center space-x-3">
+            <button
+              type="button"
+              aria-label="打开导航"
+              onClick={() => {
+                setCollapsed(false);
+                setMobileNav((v) => !v);
+              }}
+              className="grid h-9 w-9 place-items-center rounded-lg text-neutral-600 transition hover:bg-neutral-100 lg:hidden"
+            >
+              <i className="fa-solid fa-bars" />
+            </button>
             <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-600">{d.navTabs[mainTab]}</span>
-            <span className="text-xs text-neutral-300">|</span>
-            <span className="font-mono text-xs text-neutral-500">{clock}</span>
+            <span className="hidden text-xs text-neutral-300 sm:inline">|</span>
+            <span className="hidden font-mono text-xs text-neutral-500 sm:inline">{clock}</span>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="hidden items-center space-x-2 lg:flex">
             {d.subTabs[mainTab].map((label, index) => (
               <button
                 key={label}
@@ -604,7 +637,23 @@ export default function DesktopLiteApp() {
           </div>
         </header>
 
-        <div className="flex-1 p-6 md:p-8">
+        {/* 窄屏子标签：横向滚动，避免挤在头部 */}
+        <div className="aura-scroll flex shrink-0 items-center gap-2 overflow-x-auto border-b border-neutral-200/60 bg-white px-3 py-2 lg:hidden">
+          {d.subTabs[mainTab].map((label, index) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => switchSub(index)}
+              className={`shrink-0 rounded-full px-3 py-2 text-xs font-medium transition-all ${
+                subTab === index ? "bg-neutral-800 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 p-4 lg:p-8">
           {/* 工作台 / 专注 */}
           {mainTab === 0 && subTab === 0 && (
             <div className="space-y-8">
@@ -907,10 +956,11 @@ export default function DesktopLiteApp() {
                   <button
                     type="button"
                     onClick={addLogEntry}
-                    className="rounded-xl bg-neutral-800 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-neutral-900"
+                    className="shrink-0 whitespace-nowrap rounded-xl bg-neutral-800 px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-neutral-900 sm:px-4"
                   >
                     <i className="fa-solid fa-plus mr-1" />
-                    Ctrl+Enter
+                    <span className="hidden sm:inline">Ctrl+Enter</span>
+                    <span className="sm:hidden">记录</span>
                   </button>
                 </div>
                 <div className="aura-scroll max-h-[400px] space-y-2 overflow-y-auto pr-1">
@@ -1321,7 +1371,7 @@ export default function DesktopLiteApp() {
           )}
         </div>
 
-        <div className="flex h-8 shrink-0 items-center space-x-4 border-t border-neutral-100 bg-white/80 px-6 text-[10px] text-neutral-400">
+        <div className="hidden h-8 shrink-0 items-center space-x-4 border-t border-neutral-100 bg-white/80 px-6 text-[10px] text-neutral-400 lg:flex">
           <span>
             Ctrl+1~4 <span>{d.hintSwitch}</span>
           </span>

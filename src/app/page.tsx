@@ -74,12 +74,12 @@ export default async function Home() {
               {identity.role === "admin" ? " · 管理员" : ""}
             </span>
             {identity.role === "admin" && (
-              <Link href="/admin" className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 transition hover:border-indigo-400/40 hover:text-indigo-300">
+              <Link href="/admin" className="rounded-full border border-white/10 bg-white/5 px-3 py-2.5 transition hover:border-indigo-400/40 hover:text-indigo-300 sm:py-1.5">
                 管理
               </Link>
             )}
             <form action="/api/v1/auth/logout" method="post">
-              <button className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 transition hover:border-red-400/40 hover:text-red-300">
+              <button className="rounded-full border border-white/10 bg-white/5 px-3 py-2.5 transition hover:border-red-400/40 hover:text-red-300 sm:py-1.5">
                 退出
               </button>
             </form>

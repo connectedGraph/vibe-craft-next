@@ -25,8 +25,8 @@ const MODES: { id: Mode; label: string; icon: string }[] = [
   { id: "edit", label: "Edit", icon: "ph-bold ph-pencil-simple" },
 ];
 
-const MODE_BTN_ACTIVE = "flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all bg-white shadow-sm text-gray-900";
-const MODE_BTN_IDLE = "flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-900";
+const MODE_BTN_ACTIVE = "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all bg-white shadow-sm text-gray-900 sm:py-1.5";
+const MODE_BTN_IDLE = "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-900 sm:py-1.5";
 
 export default function ExpressingApp() {
   const [state, setState] = useState<ExpressState>(initialState);
@@ -36,6 +36,7 @@ export default function ExpressingApp() {
   const [annoDraft, setAnnoDraft] = useState("");
   const [editorLabel, setEditorLabel] = useState<"Adding Note" | "Editing Note">("Adding Note");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [mobileSidebar, setMobileSidebar] = useState(false);
   const [selection, setSelection] = useState<{ text: string; top: number; left: number } | null>(null);
   const [pendingText, setPendingText] = useState("");
   const [categoryModal, setCategoryModal] = useState(false);
@@ -211,6 +212,7 @@ export default function ExpressingApp() {
 
   const selectDoc = useCallback(
     (id: string) => {
+      setMobileSidebar(false);
       commit((prev) => ({ ...prev, activeDocId: id, ui: { ...prev.ui, globalMode: false } }));
     },
     [commit],
@@ -218,6 +220,7 @@ export default function ExpressingApp() {
 
   const createDoc = useCallback(() => {
     const doc = newDoc();
+    setMobileSidebar(false);
     commit((prev) => ({
       ...prev,
       docs: [doc, ...prev.docs],
@@ -467,6 +470,16 @@ export default function ExpressingApp() {
         .expr-prose li { margin:.2em 0; }
         .expr-prose strong { font-weight:700; color:#0f172a; }
         .expr-sidebar-closed #expressing-sidebar { margin-left:-18rem; }
+        /* 窄屏：左侧文档栏改为覆盖式抽屉，桌面（≥1024px）保持原布局 */
+        @media (max-width: 1023.98px) {
+          #expressing-sidebar {
+            position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
+            width: 18rem; min-width: 18rem; margin-left: 0 !important;
+            transform: translateX(-100%); transition: transform .3s ease;
+            box-shadow: 0 24px 60px -20px rgba(15,23,42,.45);
+          }
+          #expressing-sidebar.mobile-open { transform: translateX(0); }
+        }
       `}</style>
       <Script src="https://unpkg.com/@phosphor-icons/web" strategy="afterInteractive" />
       <Script src="/shared/sync-client.js" strategy="afterInteractive" />
@@ -474,7 +487,7 @@ export default function ExpressingApp() {
 
       <aside
         id="expressing-sidebar"
-        className="z-20 flex w-72 flex-shrink-0 flex-col border-r border-gray-200 bg-white shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-[margin] duration-300"
+        className={`z-20 flex w-72 flex-shrink-0 flex-col border-r border-gray-200 bg-white shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-[margin] duration-300 ${mobileSidebar ? "mobile-open" : ""}`}
         style={{ marginLeft: state.ui.sidebarOpen ? 0 : "-18rem" }}
       >
         <div className="flex h-16 items-center justify-between border-b border-gray-100 px-5">
@@ -632,13 +645,24 @@ export default function ExpressingApp() {
         </div>
       </aside>
 
+      {mobileSidebar && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[1px] lg:hidden"
+          onClick={() => setMobileSidebar(false)}
+        />
+      )}
+
       <main className="relative flex h-full min-w-0 flex-1 flex-col bg-white">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-gray-100 bg-white/80 px-8 backdrop-blur-sm">
-          <div className="mr-4 flex min-w-0 flex-1 items-center gap-4">
+        <header className="sticky top-0 z-30 flex flex-col items-stretch gap-2 border-b border-gray-100 bg-white/80 px-3 py-2 backdrop-blur-sm lg:h-16 lg:flex-row lg:items-center lg:justify-between lg:gap-0 lg:px-8 lg:py-0">
+          <div className="mr-2 flex min-w-0 flex-1 items-center gap-2 lg:mr-4 lg:gap-4">
             <button
               type="button"
-              onClick={() => commit((prev) => ({ ...prev, ui: { ...prev.ui, sidebarOpen: !prev.ui.sidebarOpen } }))}
-              className="-ml-2 rounded-lg p-2 text-gray-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600"
+              aria-label="切换文档栏"
+              onClick={() => {
+                setMobileSidebar((v) => !v);
+                commit((prev) => ({ ...prev, ui: { ...prev.ui, sidebarOpen: !prev.ui.sidebarOpen } }));
+              }}
+              className="-ml-2 shrink-0 rounded-lg p-2 text-gray-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600 max-lg:grid max-lg:h-10 max-lg:w-10 max-lg:place-items-center"
             >
               <i className="ph-bold ph-list text-xl" />
             </button>
@@ -688,7 +712,7 @@ export default function ExpressingApp() {
             )}
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between gap-2 lg:justify-end lg:gap-4">
             {!state.ui.globalMode && (
               <div className="flex rounded-lg border border-gray-200 bg-gray-100 p-1">
                 {MODES.map((m) => (
@@ -698,18 +722,20 @@ export default function ExpressingApp() {
                     onClick={() => setMode(m.id)}
                     className={state.ui.mode === m.id ? MODE_BTN_ACTIVE : MODE_BTN_IDLE}
                   >
-                    <i className={m.icon} /> {m.label}
+                    <i className={m.icon} /> <span className="hidden sm:inline">{m.label}</span>
                   </button>
                 ))}
               </div>
             )}
 
-            <div className="h-6 w-px bg-gray-200" />
+            <div className="hidden h-6 w-px bg-gray-200 sm:block" />
 
+            <div className="flex items-center gap-1 lg:gap-4">
             <button
               type="button"
+              aria-label="表达库"
               onClick={() => commit((prev) => ({ ...prev, ui: { ...prev.ui, globalMode: !prev.ui.globalMode } }))}
-              className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600"
+              className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600 max-lg:grid max-lg:h-10 max-lg:w-10 max-lg:place-items-center"
             >
               <i className="ph-bold ph-squares-four text-xl" />
             </button>
@@ -718,26 +744,29 @@ export default function ExpressingApp() {
               <div className="flex items-center gap-1">
                 <button
                   type="button"
+                  aria-label="导出 Markdown"
                   onClick={exportMarkdown}
-                  className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-slate-700"
+                  className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-slate-700 max-lg:grid max-lg:h-10 max-lg:w-10 max-lg:place-items-center"
                 >
                   <i className="ph-bold ph-file-md text-xl" />
                 </button>
                 <button
                   type="button"
+                  aria-label="删除文档"
                   onClick={deleteDoc}
-                  className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                  className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 max-lg:grid max-lg:h-10 max-lg:w-10 max-lg:place-items-center"
                 >
                   <i className="ph-bold ph-trash text-xl" />
                 </button>
               </div>
             )}
+            </div>
           </div>
         </header>
 
         <div className="relative flex flex-1 overflow-hidden bg-gray-50">
           {state.ui.globalMode && (
-            <div className="h-full w-full overflow-y-auto p-8">
+            <div className="h-full w-full overflow-y-auto p-4 sm:p-8">
               <div className="mx-auto max-w-7xl">
                 <div className="mb-8 flex items-end justify-between border-b border-gray-100 pb-4">
                   <div>
@@ -816,8 +845,8 @@ export default function ExpressingApp() {
 
           {!state.ui.globalMode && state.ui.mode === "edit" && activeDoc && (
             <div className="flex h-full flex-1 flex-col overflow-y-auto bg-gray-50">
-              <div className="mx-auto w-full max-w-4xl space-y-6 p-8 pb-32">
-                <div className="grid grid-cols-2 gap-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="mx-auto w-full max-w-4xl space-y-6 p-4 pb-24 sm:p-8 sm:pb-32">
+                <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-2 sm:gap-6 sm:p-5">
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold uppercase tracking-wider text-gray-400" htmlFor="input-category">
                       Category
@@ -923,7 +952,7 @@ export default function ExpressingApp() {
                     id="input-explanation"
                     value={activeDoc.explanation}
                     onChange={(e) => updateDoc(activeDoc.id, { explanation: e.target.value })}
-                    className="h-[400px] w-full resize-none rounded-xl border border-gray-200 bg-white p-5 font-mono text-sm leading-relaxed shadow-sm outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-50"
+                    className="h-72 w-full resize-none rounded-xl border border-gray-200 bg-white p-4 font-mono text-sm leading-relaxed shadow-sm outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-50 sm:h-[400px] sm:p-5"
                     placeholder="Why is the mistake wrong? What is the nuance of the native expression?..."
                   />
                 </div>
@@ -936,7 +965,8 @@ export default function ExpressingApp() {
               ref={previewRef}
               onMouseUp={onPreviewMouseUp}
               onKeyUp={onPreviewMouseUp}
-              className={`expr-preview h-full flex-1 overflow-y-auto bg-white ${state.ui.mode === "view" ? "mode-view" : "mode-note"}`}
+              onTouchEnd={onPreviewMouseUp}
+              className={`expr-preview h-full min-w-0 flex-1 overflow-y-auto bg-white ${state.ui.mode === "view" ? "mode-view" : "mode-note"}`}
             >
               {state.ui.mode === "note" && (
                 <div className="sticky top-0 z-10 border-b border-yellow-200 bg-yellow-100 px-4 py-2 text-center text-xs font-bold uppercase tracking-widest text-yellow-800 shadow-sm">
@@ -945,17 +975,17 @@ export default function ExpressingApp() {
                 </div>
               )}
 
-              <div className="mx-auto max-w-3xl px-8 py-12 pb-40">
+              <div className="mx-auto max-w-3xl px-4 py-6 pb-24 sm:px-8 sm:py-12 sm:pb-40">
                 <div className="space-y-10">
                   <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                    <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
+                    <div className="border-b border-gray-200 bg-gray-50 px-4 py-3 sm:px-6 sm:py-4">
                       <div className="mb-1 text-xs font-bold uppercase tracking-wider text-gray-400">Target Meaning</div>
                       <div className="text-lg font-medium text-gray-900">
                         {activeDoc.chinese || <span className="italic text-gray-300">No Chinese translation provided</span>}
                       </div>
                     </div>
                     <div className="grid grid-cols-1 divide-y divide-gray-100 md:grid-cols-2 md:divide-x md:divide-y-0">
-                      <div className="bg-red-50/10 p-6 transition-colors hover:bg-red-50/30">
+                      <div className="bg-red-50/10 p-4 transition-colors hover:bg-red-50/30 sm:p-6">
                         <div className="mb-3 flex items-center gap-2">
                           <i className="ph-fill ph-x-circle text-xl text-red-500" />
                           <span className="text-xs font-bold uppercase tracking-wider text-red-500">Avoid Saying</span>
@@ -964,7 +994,7 @@ export default function ExpressingApp() {
                           {activeDoc.mistake || "..."}
                         </div>
                       </div>
-                      <div className="relative bg-emerald-50/10 p-6 transition-colors hover:bg-emerald-50/30">
+                      <div className="relative bg-emerald-50/10 p-4 transition-colors hover:bg-emerald-50/30 sm:p-6">
                         <div className="mb-3 flex items-center gap-2">
                           <i className="ph-fill ph-check-circle text-xl text-emerald-600" />
                           <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">
@@ -1012,7 +1042,7 @@ export default function ExpressingApp() {
       </main>
 
       <aside
-        className="absolute bottom-0 right-0 top-0 z-50 flex w-[400px] flex-shrink-0 flex-col border-l border-gray-200 bg-white shadow-2xl transition-transform duration-300"
+        className="absolute bottom-0 right-0 top-0 z-50 flex w-full max-w-full flex-shrink-0 flex-col border-l border-gray-200 bg-white shadow-2xl transition-transform duration-300 sm:w-[400px]"
         style={{ transform: state.ui.drawerOpen ? "translateX(0)" : "translateX(100%)" }}
       >
         <div className="flex h-16 items-center justify-between border-b border-gray-100 bg-gray-50/50 px-5">

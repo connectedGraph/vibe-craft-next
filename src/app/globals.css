@@ -91,3 +91,17 @@ body {
 .bri-highlight:hover {
   background: rgba(255, 240, 0, 0.65);
 }
+
+/* 移动端/平板表单控件统一 16px，避免 iOS 聚焦时自动放大页面 */
+@media (max-width: 1023.98px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* 正文阅读区在手机上不小于 16px */
+  .prose-capsule {
+    font-size: 16px;
+  }
+}

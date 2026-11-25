@@ -79,7 +79,7 @@ function PasswordField(props: {
         <button
           type="button"
           onClick={() => setShow(v => !v)}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-400 hover:bg-indigo-50 hover:text-indigo-500"
+          className="absolute right-1 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-lg text-slate-400 hover:bg-indigo-50 hover:text-indigo-500"
           aria-label={show ? '隐藏密码' : '显示密码'}
         >
           <Eye open={show} />
@@ -184,7 +184,7 @@ function LoginInner() {
 
   return (
     <div className="min-h-screen bg-[#eef1ff] bg-[radial-gradient(at_8%_6%,rgba(99,102,241,.22)_0px,transparent_45%),radial-gradient(at_95%_92%,rgba(168,85,247,.18)_0px,transparent_42%)] px-4 py-10">
-      <div className="mx-auto w-full max-w-[400px] rounded-3xl border border-white/90 bg-white/75 p-8 shadow-[0_24px_60px_-24px_rgba(49,46,129,.35)] backdrop-blur-xl">
+      <div className="mx-auto w-full max-w-[400px] rounded-3xl border border-white/90 bg-white/75 p-6 shadow-[0_24px_60px_-24px_rgba(49,46,129,.35)] backdrop-blur-xl sm:p-8">
         <div className="mb-6 flex items-center gap-2.5 text-[15px] font-bold tracking-tight text-slate-900">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 text-lg text-white shadow-lg shadow-indigo-500/40">✦</span>
           Vibe Craft

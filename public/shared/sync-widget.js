@@ -44,6 +44,16 @@
           font-size: 11px; font-weight: 600; cursor: pointer; text-decoration: none; }
         #vs-panel button:hover, #vs-panel a:hover { border-color: #c7d2fe; color: #4338ca; }
         #vs-panel #vs-user { font-size: 12px; color: #0f172a; font-weight: 700; }
+        /* 小屏：收成右下角圆形气泡，面板不超出视口，触摸目标不小于 40px */
+        @media (max-width: 640px) {
+          #vibesync-widget { right: 12px; bottom: 12px; }
+          #vs-dot-btn { width: 40px; height: 40px; padding: 0; justify-content: center; }
+          #vs-label { display: none; }
+          #vs-dot { width: 10px; height: 10px; }
+          #vs-panel { width: min(260px, calc(100vw - 24px)); bottom: 48px; }
+          #vs-panel button, #vs-panel a { min-height: 40px; display: inline-flex;
+            align-items: center; justify-content: center; }
+        }
       </style>
       <button id="vs-dot-btn" type="button"><span id="vs-dot"></span><span id="vs-label">Sync</span></button>
       <div id="vs-panel">

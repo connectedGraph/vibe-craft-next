@@ -296,7 +296,7 @@ export default function ContextlyApp() {
 
   return (
     <div
-      className="flex h-screen w-screen items-center justify-center overflow-hidden"
+      className="flex h-[100dvh] w-full items-center justify-center overflow-hidden p-3 sm:p-4"
       style={{ background: "linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)", fontFamily: "'Inter', system-ui, sans-serif" }}
     >
       <style>{`
@@ -320,7 +320,7 @@ export default function ContextlyApp() {
       <Script src="/shared/sync-client.js" strategy="afterInteractive" />
       <Script src="/shared/sync-widget.js" strategy="afterInteractive" />
 
-      <div className="ctx-glass relative m-4 flex aspect-square w-full max-w-[600px] flex-col overflow-hidden rounded-3xl text-gray-800 transition-all duration-300">
+      <div className="ctx-glass relative flex h-[calc(100dvh-1.5rem)] max-h-[720px] w-full max-w-[600px] flex-col overflow-hidden rounded-3xl text-gray-800 transition-all duration-300 sm:aspect-square sm:h-auto sm:max-h-none">
         {aiBusy && (
           <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/30 backdrop-blur-sm">
             <div className="ctx-spinner mb-2 h-10 w-10" />
@@ -328,22 +328,22 @@ export default function ContextlyApp() {
           </div>
         )}
 
-        <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-white/40 px-6">
+        <header className="z-20 flex h-14 shrink-0 items-center justify-between border-b border-white/40 px-4 sm:h-16 sm:px-6">
           <button type="button" className="flex cursor-pointer items-center gap-2" onClick={() => setView("home")}>
             <i className="ph ph-cube-transparent text-2xl text-indigo-600" />
-            <span className="text-lg font-bold tracking-tight">
+            <span className="text-base font-bold tracking-tight sm:text-lg">
               Contextly{" "}
               <span className="ml-1 rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-normal text-indigo-500">AI</span>
             </span>
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => {
                 setKeyDraft(loadData().settings?.apiKey || "");
                 setView("settings");
               }}
-              className="text-gray-600 transition-colors hover:text-indigo-600"
+              className="-mr-1 text-gray-600 transition-colors hover:text-indigo-600 max-sm:grid max-sm:h-10 max-sm:w-10 max-sm:place-items-center sm:mr-0"
               title="Settings"
             >
               <i className="ph ph-gear text-2xl" />
@@ -352,28 +352,28 @@ export default function ContextlyApp() {
               <button
                 type="button"
                 onClick={() => openEditor()}
-                className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm text-white shadow-md transition-colors hover:bg-indigo-700"
+                className="flex min-h-10 items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm text-white shadow-md transition-colors hover:bg-indigo-700 sm:min-h-0"
               >
                 <i className="ph ph-plus-bold" /> Add
               </button>
             )}
             {view === "editor" && editingId && (
-              <button type="button" onClick={() => removeCard(editingId)} className="p-2 text-red-500 hover:text-red-700">
+              <button type="button" onClick={() => removeCard(editingId)} className="p-2 text-red-500 hover:text-red-700 max-sm:grid max-sm:h-10 max-sm:w-10 max-sm:place-items-center">
                 <i className="ph ph-trash text-xl" />
               </button>
             )}
           </div>
         </header>
 
-        <main className="ctx-scroll relative flex-1 overflow-y-auto p-6">
+        <main className="ctx-scroll relative flex-1 overflow-y-auto p-4 sm:p-6">
           {view === "home" && (
-            <div className="ctx-fade flex h-full flex-col items-center justify-center gap-6">
-              <div className="mb-4 text-center">
-                <h1 className="mb-2 text-3xl font-light text-indigo-900">Hello, Learner.</h1>
+            <div className="ctx-fade flex min-h-full flex-col items-center justify-center gap-6">
+              <div className="mb-2 text-center sm:mb-4">
+                <h1 className="mb-2 text-2xl font-light text-indigo-900 sm:text-3xl">Hello, Learner.</h1>
                 <p className="text-sm text-gray-600">Review your collection or explore new words.</p>
               </div>
 
-              <div className="grid w-full max-w-sm grid-cols-2 gap-4">
+              <div className="grid w-full max-w-sm grid-cols-2 gap-3 sm:gap-4">
                 <button
                   type="button"
                   onClick={() => setView("library")}
@@ -475,11 +475,11 @@ export default function ContextlyApp() {
                       onClick={() => openEditor(card)}
                       className="group block w-full cursor-pointer rounded-xl border border-white/50 bg-white/40 p-4 text-left transition-all hover:bg-white/60 hover:shadow-md"
                     >
-                      <div className="mb-1 flex items-start justify-between">
-                        <h3 className="text-lg font-bold text-indigo-900">{card.term}</h3>
-                        <span className="rounded bg-white/50 px-1.5 py-0.5 text-xs text-gray-400">{card.state}</span>
+                      <div className="mb-1 flex items-start justify-between gap-2">
+                        <h3 className="break-words text-lg font-bold text-indigo-900">{card.term}</h3>
+                        <span className="shrink-0 rounded bg-white/50 px-1.5 py-0.5 text-xs text-gray-400">{card.state}</span>
                       </div>
-                      <p className="line-clamp-2 font-serif text-sm leading-snug text-gray-700 opacity-80 group-hover:opacity-100">
+                      <p className="line-clamp-2 break-words font-serif text-sm leading-snug text-gray-700 opacity-80 group-hover:opacity-100">
                         {card.sentence.length > 60 ? card.sentence.substring(0, 60) + "..." : card.sentence}
                       </p>
                     </button>
@@ -616,7 +616,7 @@ export default function ContextlyApp() {
               <button
                 type="button"
                 onClick={() => startSession("free")}
-                className="group w-64 cursor-pointer rounded-2xl border border-purple-200 bg-white/40 p-5 text-left transition-all hover:border-purple-300 hover:bg-white/70 hover:shadow-lg"
+                className="group w-full max-w-xs cursor-pointer rounded-2xl border border-purple-200 bg-white/40 p-5 text-left transition-all hover:border-purple-300 hover:bg-white/70 hover:shadow-lg"
               >
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-lg font-bold text-gray-800">Free Review</span>
@@ -646,7 +646,7 @@ export default function ContextlyApp() {
               </div>
             ) : (
               currentCard && (
-                <div className="relative flex h-full flex-col">
+                <div className="relative flex min-h-full flex-col">
                   <div className="mb-6 h-1.5 w-full overflow-hidden rounded-full bg-gray-200/50">
                     <div
                       className="h-full bg-indigo-500 transition-all duration-300"
@@ -656,12 +656,12 @@ export default function ContextlyApp() {
 
                   <div className="ctx-fade ctx-scroll flex flex-1 flex-col items-start justify-center overflow-y-auto pr-2">
                     {currentCard.preContext && (
-                      <p className="mb-3 border-l-2 border-gray-300 pl-4 text-sm italic text-gray-500">
+                      <p className="mb-3 break-words border-l-2 border-gray-300 pl-4 text-sm italic text-gray-500">
                         {currentCard.preContext}
                       </p>
                     )}
 
-                    <div className="mb-4 font-serif text-xl leading-relaxed text-gray-900 md:text-2xl">
+                    <div className="mb-4 break-words font-serif text-xl leading-relaxed text-gray-900 md:text-2xl">
                       {splitHighlight(currentCard.sentence, currentCard.term).map((part, i) =>
                         part.hit ? (
                           <span key={i} className="ctx-highlight">
@@ -674,7 +674,7 @@ export default function ContextlyApp() {
                     </div>
 
                     {currentCard.postContext && (
-                      <p className="mt-1 border-l-2 border-gray-300 pl-4 text-sm italic text-gray-500">
+                      <p className="mt-1 break-words border-l-2 border-gray-300 pl-4 text-sm italic text-gray-500">
                         {currentCard.postContext}
                       </p>
                     )}
@@ -693,7 +693,7 @@ export default function ContextlyApp() {
                             <i className="ph ph-magic-wand" /> AI Mnemonic
                           </button>
                         </div>
-                        <p className="text-gray-800">{currentCard.definition || "No definition."}</p>
+                        <p className="break-words text-gray-800">{currentCard.definition || "No definition."}</p>
                         {mnemonics[currentCard.id] && (
                           <div className="mt-3 rounded border-t border-indigo-100 bg-indigo-50/50 p-2 text-sm italic text-indigo-800">
                             <strong>🤖 AI Tip:</strong> {mnemonics[currentCard.id]}
@@ -724,7 +724,7 @@ export default function ContextlyApp() {
                             key={label as string}
                             type="button"
                             onClick={() => submitRating(value as 1 | 2 | 3 | 4)}
-                            className={`flex flex-col items-center justify-center rounded-lg py-2 text-sm font-medium transition-colors ${cls}`}
+                            className={`flex min-h-11 flex-col items-center justify-center rounded-lg py-2 text-sm font-medium transition-colors ${cls}`}
                           >
                             <span>{label as string}</span>
                             <span className="text-[10px] opacity-70">{hint as string}</span>

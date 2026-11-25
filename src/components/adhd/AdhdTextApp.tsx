@@ -68,6 +68,7 @@ export default function AdhdTextApp() {
   const [rulerOn, setRulerOn] = useState(false);
   const [rulerVisible, setRulerVisible] = useState(false);
   const [rulerTop, setRulerTop] = useState(0);
+  const [controlsOpen, setControlsOpen] = useState(false);
   const [tab, setTab] = useState<TabId>("test-cn");
   const paperRef = useRef<HTMLElement | null>(null);
 
@@ -144,6 +145,16 @@ export default function AdhdTextApp() {
           border-radius: 5px;
           accent-color: #3b82f6;
         }
+        /* 窄屏：控制面板改为覆盖式抽屉，桌面（≥1024px）保持原布局 */
+        @media (max-width: 1023.98px) {
+          #adhd-controls {
+            position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
+            width: 20rem; max-width: 85vw;
+            transform: translateX(-100%); transition: transform .3s ease;
+            box-shadow: 0 24px 60px -20px rgba(15,23,42,.45);
+          }
+          #adhd-controls.open { transform: translateX(0); }
+        }
       `}</style>
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -153,32 +164,64 @@ export default function AdhdTextApp() {
         href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap"
       />
 
-      <header className="z-20 flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
-        <div className="flex items-center space-x-3">
-          <div className="rounded-lg bg-blue-600 p-2">
+      <header className="z-20 flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 shadow-sm sm:px-6 sm:py-4">
+        <div className="flex min-w-0 items-center space-x-2 sm:space-x-3">
+          <button
+            type="button"
+            aria-label="打开排版设置"
+            onClick={() => setControlsOpen(true)}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-600 transition hover:bg-slate-100 lg:hidden"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <div className="shrink-0 rounded-lg bg-blue-600 p-1.5 sm:p-2">
             <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-800">
-            Typography Lab <span className="ml-2 text-sm font-light text-slate-400">v2.0</span>
+          <h1 className="truncate text-lg font-bold tracking-tight text-slate-800 sm:text-xl">
+            Typography Lab <span className="ml-2 hidden text-sm font-light text-slate-400 sm:inline">v2.0</span>
           </h1>
         </div>
         <button
           type="button"
           onClick={exportCss}
-          className="flex items-center rounded-full bg-slate-800 px-5 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-slate-700 active:scale-95"
+          className="flex shrink-0 items-center rounded-full bg-slate-800 px-3 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-slate-700 active:scale-95 sm:px-5"
         >
-          <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="mr-0 h-4 w-4 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16a2 2 0 012-2h4a2 2 0 012 2v2H8v-2z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
           </svg>
-          导出 CSS 配置
+          <span className="hidden sm:inline">导出 CSS 配置</span><span className="sm:hidden">导出</span>
         </button>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className="z-10 w-80 shrink-0 space-y-8 overflow-y-auto border-r border-slate-200 bg-white p-6 shadow-xl">
+        {controlsOpen && (
+          <div
+            className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[1px] lg:hidden"
+            onClick={() => setControlsOpen(false)}
+          />
+        )}
+        <aside
+          id="adhd-controls"
+          className={`z-10 w-80 shrink-0 space-y-8 overflow-y-auto border-r border-slate-200 bg-white p-6 shadow-xl ${controlsOpen ? "open" : ""}`}
+        >
+          <div className="flex items-center justify-between lg:hidden">
+            <span className="text-sm font-bold text-slate-700">排版设置</span>
+            <button
+              type="button"
+              aria-label="关闭设置"
+              onClick={() => setControlsOpen(false)}
+              className="grid h-10 w-10 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
           <section>
             <h3 className="mb-4 flex items-center text-xs font-bold uppercase tracking-widest text-slate-400">
               <span className="mr-2">Presets</span>
@@ -323,7 +366,7 @@ export default function AdhdTextApp() {
         </aside>
 
         <main className="relative flex flex-1 flex-col overflow-hidden">
-          <nav className="flex shrink-0 border-b border-slate-200 bg-white px-8">
+          <nav className="flex shrink-0 overflow-x-auto border-b border-slate-200 bg-white px-2 sm:px-8">
             {TABS.map((item) => {
               const active = tab === item.id;
               return (
@@ -331,7 +374,7 @@ export default function AdhdTextApp() {
                   key={item.id}
                   type="button"
                   onClick={() => setTab(item.id)}
-                  className={`border-b-2 px-6 py-4 text-sm transition ${
+                  className={`shrink-0 border-b-2 px-3 py-3 text-xs transition sm:px-6 sm:py-4 sm:text-sm ${
                     active
                       ? "border-blue-600 font-bold text-blue-600"
                       : "border-transparent font-medium text-slate-400 hover:text-slate-600"
@@ -344,12 +387,12 @@ export default function AdhdTextApp() {
           </nav>
 
           <div
-            className="adhd-viewport flex flex-1 justify-center overflow-y-auto bg-slate-100/50 p-12"
+            className="adhd-viewport flex flex-1 justify-center overflow-y-auto bg-slate-100/50 p-3 sm:p-12"
             onMouseMove={onViewportMove}
           >
             <article
               ref={paperRef}
-              className="relative min-h-full w-full max-w-4xl rounded-sm p-16 shadow-2xl transition-all duration-300"
+              className="relative min-h-full w-full max-w-4xl rounded-sm p-5 shadow-2xl transition-all duration-300 sm:p-16"
               style={paperStyle}
             >
               <div
@@ -366,7 +409,7 @@ export default function AdhdTextApp() {
 
               {tab === "test-cn" && (
                 <div className="space-y-6">
-                  <h2 className="mb-8 text-3xl font-bold">中文排版易读性分析</h2>
+                  <h2 className="mb-6 text-2xl font-bold sm:mb-8 sm:text-3xl">中文排版易读性分析</h2>
                   <p>
                     对阅读障碍（Dyslexia）群体而言，文字排版的好坏决定了阅读是“获取信息”还是“受罪”。视觉拥挤（Visual
                     Crowding）是核心难点，当字符间距过小时，大脑会难以区分笔画归属，产生文字连在一起或者在“跳舞”的错觉。
@@ -385,13 +428,13 @@ export default function AdhdTextApp() {
 
               {tab === "test-en" && (
                 <div className="space-y-6">
-                  <h2 className="mb-8 text-3xl font-bold">Dyslexia-Friendly English</h2>
+                  <h2 className="mb-6 text-2xl font-bold sm:mb-8 sm:text-3xl">Dyslexia-Friendly English</h2>
                   <p>
                     English letters are notorious for their symmetry. Letters like &apos;b&apos; and &apos;d&apos;,
                     &apos;p&apos; and &apos;q&apos; are just mirrored versions of each other. In many fonts, these are
                     perfect geometrical flips, which makes rotation errors very common.
                   </p>
-                  <div className="my-8 rounded-xl border border-blue-100 bg-blue-50/50 p-6 text-center font-mono text-4xl tracking-widest">
+                  <div className="my-6 overflow-x-auto rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-center font-mono text-2xl tracking-widest sm:my-8 sm:p-6 sm:text-4xl">
                     b d p q | u n | I l 1
                   </div>
                   <p>
@@ -409,11 +452,11 @@ export default function AdhdTextApp() {
 
               {tab === "test-code" && (
                 <div className="space-y-6">
-                  <h2 className="mb-8 text-3xl font-bold">编程字符区分度</h2>
+                  <h2 className="mb-6 text-2xl font-bold sm:mb-8 sm:text-3xl">编程字符区分度</h2>
                   <p>
                     代码阅读不仅是逻辑理解，更是字符匹配。如果排版不当，简单的符号混淆可能导致灾难性的 Debug。
                   </p>
-                  <pre className="overflow-x-auto rounded-lg bg-slate-900 p-8 font-mono text-lg text-slate-300 shadow-inner">
+                  <pre className="max-w-full overflow-x-auto rounded-lg bg-slate-900 p-4 font-mono text-sm text-slate-300 shadow-inner sm:p-8 sm:text-lg">
                     <code>{CODE_SAMPLE}</code>
                   </pre>
                   <p>

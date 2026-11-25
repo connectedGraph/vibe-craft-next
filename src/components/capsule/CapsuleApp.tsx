@@ -38,6 +38,7 @@ export default function CapsuleApp({ username }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileSidebar, setMobileSidebar] = useState(false);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('');
@@ -195,6 +196,7 @@ export default function CapsuleApp({ username }: Props) {
     setDocs(prev => [doc, ...prev]);
     setActiveId(doc.id);
     setMode('edit');
+    setMobileSidebar(false);
   }, [categories]);
 
   const deleteDoc = useCallback(() => {
@@ -256,8 +258,19 @@ export default function CapsuleApp({ username }: Props) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#eef1ff] text-slate-900">
+      <style>{`
+        /* 窄屏：侧栏改为覆盖式抽屉，桌面（≥1024px）保持原布局 */
+        @media (max-width: 1023.98px) {
+          #capsule-sidebar {
+            position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
+            width: 18rem !important; transform: translateX(-100%);
+            transition: transform .3s ease; box-shadow: 0 24px 60px -20px rgba(15,23,42,.4);
+          }
+          #capsule-sidebar.mobile-open { transform: translateX(0); }
+        }
+      `}</style>
       {/* 侧栏 */}
-      <aside className={`${sidebarOpen ? 'w-72' : 'w-0'} shrink-0 overflow-hidden border-r border-white/60 bg-white/45 backdrop-blur-xl transition-all duration-300`}>
+      <aside id="capsule-sidebar" className={`${sidebarOpen ? 'w-72' : 'w-0'} ${mobileSidebar ? 'mobile-open' : ''} shrink-0 overflow-hidden border-r border-white/60 bg-white/45 backdrop-blur-xl transition-all duration-300`}>
         <div className="flex h-16 items-center justify-between border-b border-white/60 px-4">
           <div className="flex items-center gap-2.5 font-bold">
             <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-sm text-white shadow-lg shadow-indigo-500/30">✦</span>
@@ -298,7 +311,7 @@ export default function CapsuleApp({ username }: Props) {
           {filtered.map(d => (
             <button
               key={d.id}
-              onClick={() => { setActiveId(d.id); setMode('view'); }}
+              onClick={() => { setActiveId(d.id); setMode('view'); setMobileSidebar(false); }}
               className={`w-full rounded-xl border p-3 text-left transition ${d.id === activeId ? 'border-indigo-200 bg-white shadow-sm' : 'border-transparent bg-white/40 hover:bg-white/70'}`}
             >
               <div className="truncate text-sm font-semibold text-slate-800">{d.title || '未命名文档'}</div>
@@ -319,25 +332,42 @@ export default function CapsuleApp({ username }: Props) {
         </div>
       </aside>
 
+      {mobileSidebar && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[1px] lg:hidden"
+          onClick={() => setMobileSidebar(false)}
+        />
+      )}
+
       {/* 主区 */}
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between gap-3 border-b border-white/60 bg-white/40 px-4 backdrop-blur-xl">
-          <div className="flex min-w-0 items-center gap-2">
-            <button onClick={() => setSidebarOpen(v => !v)} className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-white/60" title="切换侧栏">☰</button>
-            <h1 className="truncate text-lg font-bold">{active?.title || 'Prompt Capsule'}</h1>
+        <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-white/60 bg-white/40 px-3 py-2 backdrop-blur-xl lg:h-16 lg:flex-nowrap lg:gap-3 lg:px-4 lg:py-0">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <button
+              onClick={() => {
+                setMobileSidebar((v) => !v);
+                setSidebarOpen((v) => !v);
+              }}
+              aria-label="切换侧栏"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-white/60 lg:h-8 lg:w-8"
+              title="切换侧栏"
+            >
+              ☰
+            </button>
+            <h1 className="min-w-0 truncate text-lg font-bold">{active?.title || 'Prompt Capsule'}</h1>
             {active && <span className="hidden rounded bg-indigo-50 px-2 py-0.5 text-[11px] text-indigo-600 sm:inline">{active.category}</span>}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="hidden items-center gap-1.5 text-[11px] text-slate-500 sm:flex">
               <span className={`h-2 w-2 rounded-full ${sync.status === 'idle' ? 'bg-emerald-400' : sync.status === 'syncing' ? 'animate-pulse bg-indigo-400' : sync.status === 'error' ? 'bg-red-400' : sync.status === 'login-required' ? 'bg-amber-400' : 'bg-slate-300'}`} />
               {statusText[sync.status]}
             </span>
-            <button onClick={sync.syncNow} className="rounded-lg border border-slate-200 bg-white/70 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-indigo-300 hover:text-indigo-600">同步</button>
+            <button onClick={sync.syncNow} className="min-h-10 rounded-lg border border-slate-200 bg-white/70 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-indigo-300 hover:text-indigo-600 lg:min-h-0">同步</button>
             <div className="flex rounded-xl border border-slate-200 bg-white/70 p-0.5">
-              <button onClick={() => setMode('view')} className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${mode === 'view' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>查看</button>
-              <button onClick={() => setMode('edit')} className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${mode === 'edit' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>编辑</button>
+              <button onClick={() => setMode('view')} className={`min-h-9 rounded-lg px-2.5 py-1 text-xs font-semibold lg:min-h-0 ${mode === 'view' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>查看</button>
+              <button onClick={() => setMode('edit')} className={`min-h-9 rounded-lg px-2.5 py-1 text-xs font-semibold lg:min-h-0 ${mode === 'edit' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>编辑</button>
             </div>
-            <button onClick={deleteDoc} className="rounded-lg px-2 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50">删除</button>
+            <button onClick={deleteDoc} className="min-h-10 rounded-lg px-2 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 lg:min-h-0">删除</button>
           </div>
         </header>
 
@@ -353,7 +383,7 @@ export default function CapsuleApp({ username }: Props) {
             <div className="mx-auto max-w-3xl space-y-6" ref={renderRef} onMouseUp={onMouseUp}>
               {selection && (
                 <div className="sticky top-0 z-10 flex items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
-                  <span className="truncate text-slate-600">已选中：{selection}</span>
+                  <span className="min-w-0 truncate text-slate-600">已选中：{selection}</span>
                   <button onClick={addAnnotation} className="ml-3 shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 font-semibold text-white">添加标注</button>
                 </div>
               )}
@@ -373,7 +403,7 @@ export default function CapsuleApp({ username }: Props) {
                   <div className="mb-3 text-xs font-bold text-slate-600">标注（{(active.annotations || []).length}）</div>
                   <ul className="space-y-2">
                     {(active.annotations || []).map(a => (
-                      <li key={a.id} className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2 text-sm">
+                      <li key={a.id} className="break-words rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2 text-base sm:text-sm">
                         <span className="font-semibold text-amber-700">{a.text}</span>
                         <span className="text-slate-600"> — {a.note}</span>
                       </li>

@@ -42,3 +42,7 @@ next-env.d.ts
 
 # local sqlite data
 /data
+
+# 部署凭据与打包产物
+deploy/tx-credentials.txt
+deploy/*.bundle

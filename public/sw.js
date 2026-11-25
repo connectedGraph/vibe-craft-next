@@ -1,17 +1,13 @@
-/* Vibe Craft service worker：静态工具外壳缓存，API 与 Next 路由永远走网络 */
+/* Vibe Craft service worker：只缓存公共静态资源，页面与 API 永远走网络 */
 'use strict';
 
-const CACHE = 'vibe-craft-shell-v2';
+const CACHE = 'vibe-craft-shell-v3';
 const SHELL = [
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/shared/sync-client.js',
   '/shared/sync-widget.js',
-  '/contextly/index.html',
-  '/expressing/index.html',
-  '/desktop-lite/index.html',
-  '/adhd-text/index.html',
 ];
 
 self.addEventListener('install', (event) => {

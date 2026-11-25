@@ -10,12 +10,14 @@
 | 工具 | 入口 | 实现 |
 |---|---|---|
 | Prompt Capsule | `/prompt-capsule` | React，Markdown + 选区黄框标注 |
-| Contextly | `/contextly/index.html` | 静态单页（词汇 + 上下文） |
-| Expressing | `/expressing/index.html` | 静态单页（中文 → 地道英文对比） |
-| Desktop Lite | `/desktop-lite/index.html` | 静态单页（Aura PKM / 番茄专注） |
-| ADHD Text | `/adhd-text/index.html` | 静态单页（阅读排版实验） |
+| Contextly | `/contextly` | React（词汇 + 上下文，间隔复习） |
+| Expressing | `/expressing` | React（中文 → 地道英文对比 + 标注） |
+| Desktop Lite | `/desktop-lite` | React（Aura PKM：番茄专注 / 剪贴板 / 日志 / 规划 / 收件箱 / 知识坑） |
+| ADHD Text | `/adhd-text` | React（阅读排版实验） |
 
-四个静态工具放在 `public/`，由同一个 Next 进程托管，共用 `public/shared/sync-client.js` 与 `/api/v1`。
+五个工具都是 React 组件，共用 `public/shared/sync-client.js` 与同一套 `/api/v1`；本地数据仍存 localStorage，key 与旧版一致（`glass_memory_v2` / `bri_fix_pro_v1` / `aura_pkm_data_v2`），老数据直接可读。
+
+旧的静态页地址（如 `/contextly/index.html`）全部 307 跳到新路由。
 
 ## 技术栈
 

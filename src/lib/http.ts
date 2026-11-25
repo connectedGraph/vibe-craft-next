@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { ApiError, messageOf } from './errors';
 
+/** 全局请求体上限（备份导入这类大 payload 用）。 */
 export const MAX_BODY = 8 * 1024 * 1024;
+/**
+ * 单个同步 push 的上限。ops 最多 500 条，正常请求远小于 2MB；
+ * 收紧到 2MB 可以更早拒绝异常大包，backup/import 仍沿用 MAX_BODY。
+ * 阈值集中在本文件，路由通过 readJson(req, maxBytes) 按需收紧。
+ */
+export const MAX_SYNC_BODY = 2 * 1024 * 1024;
 
 export function json(data: unknown, status = 200, headers?: Record<string, string>) {
   return NextResponse.json(data, { status, headers });
@@ -15,10 +22,10 @@ export function fail(err: unknown) {
   return json({ ok: false, error: 'internal_error', message: messageOf('internal_error') }, 500);
 }
 
-export async function readJson(req: Request): Promise<Record<string, unknown>> {
+export async function readJson(req: Request, maxBytes = MAX_BODY): Promise<Record<string, unknown>> {
   let raw = '';
   try { raw = await req.text(); } catch { throw new ApiError(400, 'invalid_json'); }
-  if (raw.length > MAX_BODY) throw new ApiError(413, 'payload_too_large');
+  if (raw.length > maxBytes) throw new ApiError(413, 'payload_too_large');
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw);

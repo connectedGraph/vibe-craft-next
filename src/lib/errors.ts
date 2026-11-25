@@ -1,7 +1,7 @@
 export const ERROR_MESSAGES: Record<string, string> = {
   invalid_credentials: '用户名或密码错误',
   account_disabled: '账号已被禁用，请联系管理员',
-  too_many_attempts: '尝试次数过多，请 15 分钟后再试',
+  too_many_attempts: '操作过于频繁，请稍后再试',
   missing_credentials: '请填写用户名和密码',
   weak_password: '密码至少 8 位',
   bad_username: '用户名只能是 3–32 位字母、数字或下划线',

@@ -32,11 +32,11 @@ import Icon, { type IconName } from './Icon';
 type Props = { username: string };
 
 const STATUS_TEXT: Record<string, string> = {
-  off: '同步未启用',
-  idle: '已同步',
-  syncing: '同步中…',
-  error: '同步失败',
-  'login-required': '需要登录',
+  off: 'Cloud Sync Off',
+  idle: 'Synced',
+  syncing: 'Syncing…',
+  error: 'Sync Error',
+  'login-required': 'Sign in to Sync',
 };
 
 export default function CapsuleApp({ username }: Props) {
@@ -214,7 +214,10 @@ export default function CapsuleApp({ username }: Props) {
     setState((prev) => ({
       ...prev,
       activeDocId: id,
-      ui: { ...prev.ui, mode: prev.ui.mode === 'edit' ? 'view' : prev.ui.mode, globalMode: false },
+      docs: prev.docs.map((d) =>
+        d.id === id && !prev.categories.includes(d.category) ? { ...d, category: 'General' } : d,
+      ),
+      ui: { ...prev.ui, globalMode: false },
     }));
     setMobileSidebar(false);
     setSelection(null);
@@ -227,7 +230,21 @@ export default function CapsuleApp({ username }: Props) {
     if (!window.confirm('Are you sure you want to delete this document?')) return;
     setState((prev) => {
       const docs = prev.docs.filter((d) => d.id !== prev.activeDocId);
-      return { ...prev, docs, activeDocId: docs[0]?.id ?? null, ui: { ...prev.ui, mode: 'view' } };
+      if (docs.length === 0) {
+        // 与旧版一致：删掉最后一篇时自动新建一篇，避免停在空编辑区
+        const fresh: CapsuleDoc = {
+          id: genId(),
+          title: 'New Note',
+          category: 'General',
+          tags: [],
+          question: '',
+          answer: '',
+          annotations: [],
+          updatedAt: Date.now(),
+        };
+        return { ...prev, docs: [fresh], activeDocId: fresh.id, ui: { ...prev.ui, mode: 'edit', globalMode: false } };
+      }
+      return { ...prev, docs, activeDocId: docs[0]?.id ?? null };
     });
     setSelection(null);
     setDrawerOpen(false);
@@ -568,6 +585,11 @@ export default function CapsuleApp({ username }: Props) {
           />
           <button
             onClick={() => setSyncModalOpen(true)}
+            title={
+              sync.user
+                ? `账号：${sync.user}${sync.lastSyncAt ? ` · 上次同步 ${new Date(sync.lastSyncAt).toLocaleTimeString()}` : ''}`
+                : sync.error || (sync.lastSyncAt ? `上次同步 ${new Date(sync.lastSyncAt).toLocaleTimeString()}` : '')
+            }
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/60 bg-white/50 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-white hover:shadow-sm"
           >
             <span
@@ -585,6 +607,27 @@ export default function CapsuleApp({ username }: Props) {
             />
             {STATUS_TEXT[sync.status] || sync.status}
           </button>
+          {username ? (
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-white/60 bg-white/40 px-3 py-1.5 text-[11px] text-slate-500">
+              <span className="min-w-0 truncate">
+                账号 <b className="font-semibold text-slate-700">{username}</b>
+                {isAdmin ? ' · 管理员' : ''}
+              </span>
+              <button
+                onClick={() => void sync.logout()}
+                className="shrink-0 font-semibold text-slate-500 transition hover:text-red-500"
+              >
+                退出登录
+              </button>
+            </div>
+          ) : (
+            <a
+              href="/login?next=/prompt-capsule"
+              className="mt-2 flex items-center justify-center rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-1.5 text-[11px] font-semibold text-indigo-600 transition hover:bg-indigo-50"
+            >
+              登录后同步
+            </a>
+          )}
         </div>
       </aside>
 
@@ -799,6 +842,7 @@ export default function CapsuleApp({ username }: Props) {
       />
 
       <SyncModal
+        key={syncModalOpen ? 'sync-open' : 'sync-closed'}
         open={syncModalOpen}
         onClose={() => setSyncModalOpen(false)}
         status={sync.status}
@@ -807,6 +851,10 @@ export default function CapsuleApp({ username }: Props) {
         errorText={sync.error}
         lastSyncAt={sync.lastSyncAt}
         conflicts={sync.conflicts}
+        config={sync.config}
+        accountMode={sync.accountMode}
+        onSaveConfig={sync.saveConfig}
+        onLogout={() => void sync.logout()}
         onClearConflicts={sync.clearConflicts}
         onRestoreConflict={restoreConflict}
         onSyncNow={async () => { await sync.syncNow(); }}

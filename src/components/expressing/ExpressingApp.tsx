@@ -9,13 +9,16 @@ import {
   filterDocs,
   generateId,
   initialState,
+  isSeedDocLike,
   loadState,
   newDoc,
   persistState,
+  SEED_DOC_ID,
   type ExpressDoc,
   type ExpressState,
   type Mode,
 } from "@/lib/tools/expressing";
+import { useAccount } from "@/lib/useAccount";
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -43,6 +46,7 @@ export default function ExpressingApp() {
   const [newCategory, setNewCategory] = useState("");
   const [sanitize, setSanitize] = useState<(html: string) => string>(() => (h: string) => h);
   const [syncReady, setSyncReady] = useState(false);
+  const { account, logout } = useAccount();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const titleRef = useRef<HTMLInputElement | null>(null);
@@ -125,6 +129,14 @@ export default function ExpressingApp() {
                     ...(ch.data as ExpressDoc),
                     updatedAt: Math.max(Number(ch.data.updatedAt) || 0, Number(ch.updatedAt) || 0),
                   };
+                  // 云端可能还留着旧版随机 id 的示例；本地已有固定 id 时不再收进来
+                  if (
+                    incoming.id !== SEED_DOC_ID &&
+                    isSeedDocLike(incoming) &&
+                    docs.some((d) => d.id === SEED_DOC_ID)
+                  ) {
+                    continue;
+                  }
                   if (idx === -1) {
                     docs.push(incoming);
                     changed = true;
@@ -400,7 +412,16 @@ export default function ExpressingApp() {
           const next: ExpressState = {
             ...initialState(),
             ...loaded,
-            ui: { ...initialState().ui, ...(loaded.ui || {}) },
+            ui: {
+              ...initialState().ui,
+              ...(loaded.ui || {}),
+              // 与旧版 initApp 一致：导入后回阅读态，侧栏展开
+              mode: "view",
+              sidebarOpen: true,
+              drawerOpen: false,
+              editingAnnotationId: null,
+              globalMode: false,
+            },
           };
           next.docs = next.docs.map((d) => ({ ...d, tags: d.tags || [], annotations: d.annotations || [] }));
           const doc = next.docs[0];
@@ -642,6 +663,37 @@ export default function ExpressingApp() {
               e.target.value = "";
             }}
           />
+          {account && (
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-100 pt-3 text-[11px] text-gray-500">
+              {account.user ? (
+                <>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <i className="ph-bold ph-user-circle text-sm text-emerald-500" />
+                    <span className="truncate">
+                      账号 <b className="font-semibold text-gray-700">{account.user.username}</b>
+                      {account.user.role === "admin" ? " · 管理员" : ""}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void logout()}
+                    className="shrink-0 font-semibold text-gray-500 transition hover:text-red-500"
+                  >
+                    退出登录
+                  </button>
+                </>
+              ) : account.mode === "off" ? (
+                <span className="italic text-gray-400">匿名模式 · 数据保存在本机</span>
+              ) : (
+                <>
+                  <span className="text-gray-400">未登录 · 仅本机存储</span>
+                  <a href="/login?next=/expressing" className="shrink-0 font-semibold text-emerald-600 hover:underline">
+                    登录同步
+                  </a>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </aside>
 

@@ -22,6 +22,7 @@ import {
   type Lang,
   type Pit,
 } from "@/lib/tools/desktopLite";
+import { useAccount } from "@/lib/useAccount";
 
 const QUOTES = ['"纯粹至美，至简则灵"', '"把灵感交给剪贴板，把心交给专注"', '"少即是多"', '"深沉的知识，始于每一次开坑"'];
 
@@ -54,6 +55,7 @@ export default function DesktopLiteApp() {
 
   const logInputRef = useRef<HTMLInputElement | null>(null);
   const mountedSync = useRef(false);
+  const { account, logout } = useAccount();
 
   const d = useMemo(() => dict(lang), [lang]);
 
@@ -570,6 +572,37 @@ export default function DesktopLiteApp() {
               </div>
               <div className="text-xs font-medium text-neutral-500">{quote}</div>
             </div>
+            {account && (
+              <div className="mt-3 flex items-center justify-between gap-2 rounded-2xl border border-neutral-100 bg-white px-3 py-2 text-[11px] text-neutral-500">
+                {account.user ? (
+                  <>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <i className="fa-solid fa-circle-user text-neutral-400" />
+                      <span className="truncate">
+                        {account.user.username}
+                        {account.user.role === "admin" ? " · 管理员" : ""}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void logout()}
+                      className="shrink-0 font-medium text-neutral-400 transition hover:text-rose-500"
+                    >
+                      退出登录
+                    </button>
+                  </>
+                ) : account.mode === "off" ? (
+                  <span className="italic text-neutral-400">匿名模式 · 本地保存</span>
+                ) : (
+                  <>
+                    <span className="text-neutral-400">未登录 · 仅本机</span>
+                    <a href="/login?next=/desktop-lite" className="shrink-0 font-medium text-neutral-600 hover:underline">
+                      登录同步
+                    </a>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 

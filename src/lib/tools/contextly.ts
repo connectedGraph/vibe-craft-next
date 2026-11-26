@@ -61,7 +61,8 @@ export function ensureSeedCard(): boolean {
   if (raw !== null) return false;
   const now = Date.now();
   const card: Card = {
-    id: generateId(),
+    // 固定 id：多设备首次使用同步到同一账号时不会生成重复的引导卡
+    id: "seed-epiphany",
     ...SEED_CARD,
     created: now,
     state: "new",
@@ -75,16 +76,36 @@ export function ensureSeedCard(): boolean {
   return true;
 }
 
+/** 判断是否旧版随机 id 的 epiphany 引导卡，用于跨设备归并去重。 */
+export function isSeedCardLike(card: Partial<Card> | null | undefined): boolean {
+  if (!card) return false;
+  return (
+    card.term === SEED_CARD.term &&
+    card.sentence === SEED_CARD.sentence &&
+    card.preContext === SEED_CARD.preContext &&
+    card.postContext === SEED_CARD.postContext &&
+    card.definition === SEED_CARD.definition
+  );
+}
+
 export function loadData(): StoreData {
   if (typeof window === "undefined") return { settings: {}, cards: [] };
   try {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return { settings: {}, cards: [] };
     const parsed = JSON.parse(raw) as StoreData;
-    return {
-      settings: parsed.settings || {},
-      cards: Array.isArray(parsed.cards) ? parsed.cards : [],
-    };
+    const settings = parsed.settings || {};
+    let cards = Array.isArray(parsed.cards) ? parsed.cards : [];
+    if (cards.some(isSeedCardLike)) {
+      if (!cards.some((c) => c.id === "seed-epiphany")) {
+        const first = cards.find(isSeedCardLike);
+        if (first) first.id = "seed-epiphany";
+      }
+      cards = cards.filter((c) => c.id === "seed-epiphany" || !isSeedCardLike(c));
+      // loadData 会被同步快照与界面反复调用；清理结果直接落盘，避免每次重复归并
+      window.localStorage.setItem(KEY, JSON.stringify({ settings, cards }));
+    }
+    return { settings, cards };
   } catch {
     return { settings: {}, cards: [] };
   }
@@ -217,6 +238,14 @@ export function applyRemoteChanges(
       ...(ch.data as Card),
       updatedAt: Math.max(Number(ch.data.updatedAt) || 0, Number(ch.updatedAt) || 0),
     };
+    // 云端可能还留着旧版随机 id 的引导卡；本地已有固定 id 时不再收进来
+    if (
+      incoming.id !== "seed-epiphany" &&
+      isSeedCardLike(incoming) &&
+      data.cards.some((c) => c.id === "seed-epiphany")
+    ) {
+      continue;
+    }
     if (idx === -1) {
       data.cards.push(incoming);
       changed = true;

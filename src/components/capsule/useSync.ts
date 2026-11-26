@@ -7,10 +7,31 @@ export type { Annotation, CapsuleDoc };
 
 export type SyncStatus = 'off' | 'idle' | 'syncing' | 'error' | 'login-required';
 export type SyncConflict = { id: string; collection: string; at: number; local: CapsuleDoc };
+export type SyncConfig = { server: string; token: string; enabled: boolean };
 
 const CURSOR_KEY = 'vibesync:cursor:prompt-capsule';
 const SNAP_KEY = 'vibesync:snap:prompt-capsule';
+const CONFIG_KEY = 'vibesync:config:prompt-capsule';
+const CONFLICT_KEY = 'vibesync:conflicts:prompt-capsule';
 const APP = 'prompt-capsule';
+
+const DEFAULT_CONFIG: SyncConfig = { server: '', token: '', enabled: true };
+
+function readConfig(): SyncConfig {
+  if (typeof window === 'undefined') return DEFAULT_CONFIG;
+  try {
+    const raw = window.localStorage.getItem(CONFIG_KEY);
+    if (!raw) return DEFAULT_CONFIG;
+    const parsed = JSON.parse(raw) as Partial<SyncConfig>;
+    return {
+      server: String(parsed.server || '').trim(),
+      token: String(parsed.token || '').trim(),
+      enabled: parsed.enabled !== false,
+    };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
 
 function hash(s: string): string {
   let h = 2166136261;
@@ -21,11 +42,15 @@ function hash(s: string): string {
   return (h >>> 0).toString(36);
 }
 
-async function api(method: string, path: string, body?: unknown) {
-  const res = await fetch(path, {
+async function api(method: string, path: string, body: unknown, config: SyncConfig) {
+  const base = config.server ? config.server.replace(/\/+$/, '') : '';
+  const headers: Record<string, string> = {};
+  if (body) headers['Content-Type'] = 'application/json';
+  if (base && config.token) headers.Authorization = `Bearer ${config.token}`;
+  const res = await fetch(base + path, {
     method,
     credentials: 'same-origin',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
@@ -52,13 +77,26 @@ export function useCapsuleSync(opts: {
   const [user, setUser] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [lastSyncAt, setLastSyncAt] = useState(0);
-  const [conflicts, setConflicts] = useState<SyncConflict[]>([]);
+  const [conflicts, setConflicts] = useState<SyncConflict[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem(CONFLICT_KEY);
+      return raw ? (JSON.parse(raw) as SyncConflict[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [config, setConfig] = useState<SyncConfig>(() => readConfig());
 
   const snapRef = useRef<Record<string, string>>({});
   const runningRef = useRef(false);
   const optsRef = useRef(opts);
+  const configRef = useRef(config);
   useEffect(() => {
     optsRef.current = opts;
+  });
+  useEffect(() => {
+    configRef.current = config;
   });
 
   useEffect(() => {
@@ -72,17 +110,39 @@ export function useCapsuleSync(opts: {
     try { localStorage.setItem(SNAP_KEY, JSON.stringify(snapRef.current)); } catch { /* 忽略 */ }
   }, []);
 
+  // 冲突列表跨刷新保留（旧版 VibeSync 同样持久化 conflicts）
+  useEffect(() => {
+    try {
+      if (conflicts.length) localStorage.setItem(CONFLICT_KEY, JSON.stringify(conflicts));
+      else localStorage.removeItem(CONFLICT_KEY);
+    } catch { /* 忽略 */ }
+  }, [conflicts]);
+
   const tick = useCallback(async () => {
     if (!optsRef.current.enabled || runningRef.current) return;
+    const cfg = configRef.current;
+    if (!cfg.enabled) {
+      setStatus('off');
+      return;
+    }
+    if (cfg.server && !cfg.token) {
+      setStatus('error');
+      setError('手动同步模式需要填写 Access Token');
+      return;
+    }
     runningRef.current = true;
     try {
-      const me = await api('GET', '/api/v1/auth/me');
-      if (!me.user && me.mode !== 'off') {
-        setStatus('login-required');
-        setUser(null);
-        return;
+      if (cfg.server) {
+        setUser('手动配置');
+      } else {
+        const me = await api('GET', '/api/v1/auth/me', undefined, cfg);
+        if (!me.user && me.mode !== 'off') {
+          setStatus('login-required');
+          setUser(null);
+          return;
+        }
+        setUser(me.user?.username || (me.mode === 'off' ? 'anonymous' : null));
       }
-      setUser(me.user?.username || (me.mode === 'off' ? 'anonymous' : null));
       setStatus('syncing');
       setError('');
 
@@ -124,18 +184,17 @@ export function useCapsuleSync(opts: {
           app: APP,
           deviceId: getDeviceId(),
           ops,
-        });
+        }, cfg);
         for (const c of pushed.conflicts || []) {
-          if (c.collection === 'docs') {
-            const local = current.docs.find(d => d.id === c.id);
-            if (local && c.server?.data) {
-              optsRef.current.onConflict(local, c.server.data);
-              setConflicts(prev => [
-                ...prev.filter(x => x.id !== c.id),
-                { id: c.id, collection: c.collection, at: Date.now(), local: c.server.data ?? local },
-              ]);
-            }
-          }
+          if (c.collection !== 'docs') continue;
+          const local = current.docs.find((d) => d.id === c.id);
+          if (!local || !c.server?.data) continue;
+          // 云端版本胜出；本地版本另存为「冲突副本」，并保留在冲突列表里供恢复
+          optsRef.current.onConflict(local, c.server.data as CapsuleDoc);
+          setConflicts((prev) => [
+            ...prev.filter((x) => x.id !== c.id),
+            { id: c.id, collection: c.collection, at: Date.now(), local },
+          ]);
         }
       }
 
@@ -147,7 +206,7 @@ export function useCapsuleSync(opts: {
       let hasMore = true;
 
       while (hasMore) {
-        const res = await api('GET', `/api/v1/sync/pull?app=${APP}&since=${since}&limit=500`);
+        const res = await api('GET', `/api/v1/sync/pull?app=${APP}&since=${since}&limit=500`, undefined, cfg);
         for (const ch of res.changes || []) {
           if (ch.collection === 'docs') {
             if (ch.op === 'delete') {
@@ -185,10 +244,25 @@ export function useCapsuleSync(opts: {
     }
   }, [persistSnap]);
 
-  const clearConflicts = useCallback(() => setConflicts([]), []);
+  const clearConflicts = useCallback(() => {
+    setConflicts([]);
+    try { localStorage.removeItem(CONFLICT_KEY); } catch { /* 忽略 */ }
+  }, []);
+
+  const saveConfig = useCallback((next: SyncConfig) => {
+    const normalized: SyncConfig = {
+      server: next.server.trim(),
+      token: next.token.trim(),
+      enabled: !!next.enabled,
+    };
+    setConfig(normalized);
+    configRef.current = normalized;
+    try { localStorage.setItem(CONFIG_KEY, JSON.stringify(normalized)); } catch { /* 忽略 */ }
+    if (normalized.enabled) void tick();
+  }, [tick]);
 
   const testConnection = useCallback(async () => {
-    const res = await api('GET', `/api/v1/sync/state?app=${APP}`);
+    const res = await api('GET', `/api/v1/sync/state?app=${APP}`, undefined, configRef.current);
     return { seq: Number(res.seq) || 0, count: Number(res.count) || 0 };
   }, []);
 
@@ -200,8 +274,19 @@ export function useCapsuleSync(opts: {
     await tick();
   }, [tick]);
 
+  const logout = useCallback(async () => {
+    try {
+      await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    } catch { /* 忽略 */ }
+    setUser(null);
+    setStatus('login-required');
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- 退出登录后整页跳转，清掉同步轮询
+    window.location.href = `/login?next=${next}`;
+  }, []);
+
   useEffect(() => {
-    if (!opts.enabled) return;
+    if (!opts.enabled || !config.enabled) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 启动同步轮询（外部系统订阅），首次立刻跑一次
     tick();
     const timer = setInterval(tick, 6000);
@@ -211,12 +296,23 @@ export function useCapsuleSync(opts: {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [opts.enabled, tick]);
+  }, [opts.enabled, config.enabled, tick]);
 
-  // enabled=false 时对外统一显示 off（避免在 effect 里同步 setState）
   return {
-    status: opts.enabled ? status : 'off',
-    user, error, lastSyncAt, syncNow: tick, conflicts, clearConflicts, testConnection, pullAll,
+    // enabled=false 时对外统一显示 off（避免在 effect 里同步 setState）
+    status: opts.enabled && config.enabled ? status : 'off' as SyncStatus,
+    user,
+    error,
+    lastSyncAt,
+    syncNow: tick,
+    conflicts,
+    clearConflicts,
+    testConnection,
+    pullAll,
+    config,
+    saveConfig,
+    accountMode: !config.server,
+    logout,
   };
 }
 

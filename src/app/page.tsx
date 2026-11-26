@@ -122,11 +122,22 @@ export default async function Home() {
               </div>
             </Link>
           ))}
+
+          <div className="flex min-h-[220px] flex-col items-center justify-center space-y-3 rounded-3xl border border-dashed border-slate-800/60 bg-slate-900/10 p-6 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-800/20 text-xl text-slate-600">
+              +
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-500">More Tools Coming Soon</h3>
+              <p className="mt-1 text-xs text-slate-600">New workflow helpers will be added here.</p>
+            </div>
+          </div>
         </div>
 
         <p className="mt-10 text-center text-[11px] text-slate-600">
           所有工具都由同一个 Next.js 服务托管；数据默认存本地，登录后自动多设备同步。
         </p>
+        <footer className="mt-4 text-center text-[11px] text-slate-600">vibe-craft toolset</footer>
       </div>
     </main>
   );

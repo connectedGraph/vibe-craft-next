@@ -17,6 +17,7 @@ import {
   type Card,
   type StoreData,
 } from "@/lib/tools/contextly";
+import { useAccount } from "@/lib/useAccount";
 
 type View = "home" | "library" | "editor" | "settings" | "study-setup" | "study-session";
 
@@ -98,6 +99,7 @@ export default function ContextlyApp() {
   });
   const [mnemonics, setMnemonics] = useState<Record<string, string>>({});
   const mountedSync = useRef(false);
+  const { account, logout } = useAccount();
 
   const refresh = useCallback(() => setData(loadData()), []);
 
@@ -398,6 +400,54 @@ export default function ContextlyApp() {
               <h2 className="border-b border-black/5 pb-2 text-xl font-bold text-gray-800">Settings</h2>
 
               <div className="flex-1 space-y-6">
+                <div className="rounded-xl border border-white/50 bg-white/40 p-5">
+                  <div className="mb-3 flex items-center gap-2">
+                    <i className="ph ph-user-circle text-xl text-indigo-500" />
+                    <h3 className="font-bold text-gray-800">Account &amp; Sync</h3>
+                  </div>
+                  {account ? (
+                    account.user ? (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0 text-sm text-slate-700">
+                            已登录：<b className="text-slate-900">{account.user.username}</b>
+                            {account.user.role === "admin" && <span className="ml-1 text-[11px] text-indigo-500">管理员</span>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void logout()}
+                            className="shrink-0 rounded-md border border-white/60 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-red-300 hover:text-red-500"
+                          >
+                            退出登录
+                          </button>
+                        </div>
+                        <div className="mt-3 flex items-center gap-3 text-xs">
+                          {account.user.role === "admin" && (
+                            <a href="/admin" className="text-indigo-600 hover:underline">
+                              打开管理后台
+                            </a>
+                          )}
+                          <span className="text-gray-400">卡片与设置会自动多设备同步。</span>
+                        </div>
+                      </>
+                    ) : account.mode === "off" ? (
+                      <p className="text-sm text-gray-600">匿名模式：当前实例未开启登录，数据只保存在本机。</p>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-gray-600">未登录，当前只保存在本机。</p>
+                        <a
+                          href="/login?next=/contextly"
+                          className="shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-700"
+                        >
+                          登录 / 注册
+                        </a>
+                      </div>
+                    )
+                  ) : (
+                    <p className="text-xs text-gray-400">读取账号状态…</p>
+                  )}
+                </div>
+
                 <div className="rounded-xl border border-white/50 bg-white/40 p-5">
                   <div className="mb-3 flex items-center gap-2">
                     <i className="ph ph-sparkle text-xl text-indigo-500" />

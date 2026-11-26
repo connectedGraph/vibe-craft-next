@@ -38,6 +38,8 @@ export type ExpressState = {
 };
 
 const STORAGE_KEY = "bri_fix_pro_v1";
+export const SEED_DOC_ID = "seed-expressing-strong-preference";
+const SEED_ANNOTATION_ID = "seed-expressing-annotation";
 
 export const DEFAULT_CATEGORIES = ["General", "Business", "Daily Life", "Academic"];
 
@@ -66,7 +68,7 @@ export function initialState(): ExpressState {
 export function mockState(): ExpressState {
   const state = initialState();
   const doc: ExpressDoc = {
-    id: generateId(),
+    id: SEED_DOC_ID,
     title: "Expressing Strong Preference",
     category: "Daily Life",
     tags: ["preference", "basic"],
@@ -76,13 +78,29 @@ export function mockState(): ExpressState {
     explanation:
       '### Grammar Point\n\nIn English, we rarely use "very" directly before a verb like "like" or "love". \n\n* **Incorrect**: I very like...\n* **Correct**: I really like... / I like ... very much.\n\n"Into" is a more casual way to say you are interested in something.',
     annotations: [
-      { id: generateId(), text: "into", note: "Phrasal verb: To be interested in or enthusiastic about something." },
+      { id: SEED_ANNOTATION_ID, text: "into", note: "Phrasal verb: To be interested in or enthusiastic about something." },
     ],
     updatedAt: Date.now(),
   };
   state.docs = [doc];
   state.activeDocId = doc.id;
   return state;
+}
+
+/** 判断是否旧版随机 id 的引导示例，用于跨设备归并去重。 */
+export function isSeedDocLike(doc: Partial<ExpressDoc> | null | undefined): boolean {
+  if (!doc) return false;
+  return (
+    doc.title === "Expressing Strong Preference" &&
+    doc.category === "Daily Life" &&
+    doc.chinese === "我非常喜欢这个主意。" &&
+    doc.mistake === "I very like this idea." &&
+    doc.native === "I really like this idea. / I'm really into this idea." &&
+    (doc.explanation || "").startsWith("### Grammar Point") &&
+    Array.isArray(doc.annotations) &&
+    doc.annotations.length === 1 &&
+    doc.annotations[0]?.text === "into"
+  );
 }
 
 export function loadState(): ExpressState {
@@ -101,6 +119,14 @@ export function loadState(): ExpressState {
       ui: { ...initialState().ui, ...(parsed.ui || {}) },
     };
     state.docs = (state.docs || []).map((d) => ({ ...d, tags: d.tags || [], annotations: d.annotations || [] }));
+    // 老版本用随机 id 生成的示例：归并到固定 id，并去掉完全相同的重复副本
+    if (state.docs.some(isSeedDocLike)) {
+      if (!state.docs.some((d) => d.id === SEED_DOC_ID)) {
+        const first = state.docs.find(isSeedDocLike);
+        if (first) first.id = SEED_DOC_ID;
+      }
+      state.docs = state.docs.filter((d) => d.id === SEED_DOC_ID || !isSeedDocLike(d));
+    }
     state.ui.mode = "view";
     state.ui.sidebarOpen = true;
     state.ui.drawerOpen = false;

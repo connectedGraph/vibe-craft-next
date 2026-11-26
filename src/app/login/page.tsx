@@ -89,6 +89,39 @@ function PasswordField(props: {
   );
 }
 
+const STRENGTH_LABEL = ['', '偏弱', '还行', '很强'];
+
+function strengthOf(pw: string) {
+  if (!pw) return 0;
+  let score = 0;
+  if (pw.length >= 8) score += 1;
+  const kinds = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((re) => re.test(pw)).length;
+  if (kinds >= 2) score += 1;
+  if (pw.length >= 12 || kinds >= 3) score += 1;
+  return Math.min(3, Math.max(1, score));
+}
+
+/** 与旧版登录页一致的密码强度条：三段颜色 + 文案。 */
+function PasswordStrength({ value }: { value: string }) {
+  const score = strengthOf(value);
+  const color = score >= 3 ? 'bg-emerald-400' : score === 2 ? 'bg-amber-400' : 'bg-red-400';
+  return (
+    <div className="mt-2 flex items-center gap-1" aria-live="polite">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className={`h-[3px] flex-1 rounded-full transition-colors ${
+            score > i ? color : 'bg-slate-200'
+          }`}
+        />
+      ))}
+      <span className="min-w-[28px] text-right text-[11px] text-slate-400">
+        {score ? STRENGTH_LABEL[score] : ''}
+      </span>
+    </div>
+  );
+}
+
 function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
@@ -263,6 +296,7 @@ function LoginInner() {
                 />
               </label>
               <PasswordField label="密码" name="password" value={password} onChange={setPassword} placeholder="至少 8 位" autoComplete="new-password" />
+              <PasswordStrength value={password} />
               {me?.inviteRequired && (
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-semibold text-slate-500">邀请码</span>
@@ -297,6 +331,7 @@ function LoginInner() {
                 <PasswordField label="当前密码" name="current" value={current} onChange={setCurrent} autoComplete="current-password" />
               )}
               <PasswordField label="新密码" name="next" value={next} onChange={setNext} placeholder="至少 8 位" autoComplete="new-password" />
+              <PasswordStrength value={next} />
               <PasswordField label="再输一次" name="repeat" value={repeat} onChange={setRepeat} autoComplete="new-password" />
               <button
                 type="submit"

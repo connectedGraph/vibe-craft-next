@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useAccount } from "@/lib/useAccount";
 
 type Settings = {
   font: string;
@@ -71,6 +72,7 @@ export default function AdhdTextApp() {
   const [controlsOpen, setControlsOpen] = useState(false);
   const [tab, setTab] = useState<TabId>("test-cn");
   const paperRef = useRef<HTMLElement | null>(null);
+  const { account, logout } = useAccount();
 
   const rulerHeight = settings.size * settings.lh;
 
@@ -185,17 +187,50 @@ export default function AdhdTextApp() {
             Typography Lab <span className="ml-2 hidden text-sm font-light text-slate-400 sm:inline">v2.0</span>
           </h1>
         </div>
-        <button
-          type="button"
-          onClick={exportCss}
-          className="flex shrink-0 items-center rounded-full bg-slate-800 px-3 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-slate-700 active:scale-95 sm:px-5"
-        >
-          <svg className="mr-0 h-4 w-4 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16a2 2 0 012-2h4a2 2 0 012 2v2H8v-2z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-          </svg>
-          <span className="hidden sm:inline">导出 CSS 配置</span><span className="sm:hidden">导出</span>
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {account?.user ? (
+            <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 py-1 pl-2 pr-1 text-xs text-slate-500 sm:gap-2 sm:pl-2.5">
+              <svg className="h-4 w-4 text-slate-400 sm:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="3.5" />
+                <path d="M5 20a7 7 0 0 1 14 0" />
+              </svg>
+              <span className="hidden max-w-[120px] truncate sm:inline">
+                {account.user.username}
+                {account.user.role === "admin" ? " · 管理员" : ""}
+              </span>
+              <button
+                type="button"
+                onClick={() => void logout()}
+                className="rounded-full px-2 py-1 font-medium text-slate-500 transition hover:bg-white hover:text-red-500"
+              >
+                退出
+              </button>
+            </div>
+          ) : account && account.mode !== "off" ? (
+            <a
+              href="/login?next=/adhd-text"
+              title="登录"
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-600 transition hover:border-blue-300 hover:text-blue-600 sm:px-3"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="3.5" />
+                <path d="M5 20a7 7 0 0 1 14 0" />
+              </svg>
+              <span className="hidden sm:inline">登录</span>
+            </a>
+          ) : null}
+          <button
+            type="button"
+            onClick={exportCss}
+            className="flex shrink-0 items-center rounded-full bg-slate-800 px-3 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-slate-700 active:scale-95 sm:px-5"
+          >
+            <svg className="mr-0 h-4 w-4 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16a2 2 0 012-2h4a2 2 0 012 2v2H8v-2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+            </svg>
+            <span className="hidden sm:inline">导出 CSS 配置</span><span className="sm:hidden">导出</span>
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">

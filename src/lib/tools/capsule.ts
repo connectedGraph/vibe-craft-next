@@ -40,7 +40,14 @@ export type CapsuleState = {
 
 export const STORAGE_KEY = "bri_app_pro_v2";
 export const BACKUP_KEY_PREFIX = "bri_app_pro_v2_backup_";
-export const DEFAULT_CATEGORIES = ["General", "Vocabulary", "Grammar"];
+export const DEFAULT_CATEGORIES = ["General", "Vocabulary", "Grammar", "Reading"];
+/** 引导文档使用固定 id，换设备/换浏览器时不会在多端各生成一份再同步成重复文档。 */
+export const SEED_DOC_ID = "seed-welcome-to-bri-learn";
+const SEED_ANNOTATION_ID = "seed-welcome-annotation";
+const SEED_QUESTION =
+  "### How to use this app?\n\nThis is a **concept-first** learning tool. You write a question or paste text on top, and write your analysis below.";
+const SEED_ANSWER =
+  'In the **Note** mode, you can select any text to add **annotations**. \n\nTry selecting the word "annotations" above! \n\n> This new design uses "Glassmorphism" to provide a calm, focused environment for deep learning.';
 const GENERAL = "General";
 
 export function genId(): string {
@@ -63,15 +70,15 @@ export function defaultUI(): CapsuleUI {
 /** 首次使用时的引导文档，与旧版 createMockData 保持一致。 */
 export function seedState(): CapsuleState {
   const doc: CapsuleDoc = {
-    id: genId(),
+    id: SEED_DOC_ID,
     title: "Welcome to Bri.Learn",
     category: "General",
     tags: ["guide", "glassmorphism"],
     question:
-      "### How to use this app?\n\nThis is a **concept-first** learning tool. You write a question or paste text on top, and write your analysis below.",
+      SEED_QUESTION,
     answer:
-      'In the **Note** mode, you can select any text to add **annotations**. \n\nTry selecting the word "annotations" above! \n\n> This new design uses "Glassmorphism" to provide a calm, focused environment for deep learning.',
-    annotations: [{ id: genId(), text: "annotations", note: "Notes added to specific words for context." }],
+      SEED_ANSWER,
+    annotations: [{ id: SEED_ANNOTATION_ID, text: "annotations", note: "Notes added to specific words for context." }],
     updatedAt: Date.now(),
   };
   return {
@@ -103,6 +110,20 @@ function normalizeDoc(raw: unknown): CapsuleDoc | null {
   };
 }
 
+/** 判断是否旧版引导文档（用于把随机 id 的老引导归并到固定 id，避免多端重复）。 */
+export function isSeedDocLike(doc: Partial<CapsuleDoc> | null | undefined): boolean {
+  if (!doc) return false;
+  return (
+    doc.title === "Welcome to Bri.Learn" &&
+    doc.category === GENERAL &&
+    doc.question === SEED_QUESTION &&
+    doc.answer === SEED_ANSWER &&
+    Array.isArray(doc.annotations) &&
+    doc.annotations.length === 1 &&
+    doc.annotations[0]?.text === "annotations"
+  );
+}
+
 /**
  * 读取本地数据。仅在「从来没有存过」时写入引导文档；
  * 用户删空文档后再进来不会反复塞回来（等幂）。
@@ -123,6 +144,16 @@ export function loadState(): CapsuleState {
   try {
     const parsed = JSON.parse(raw) as Partial<CapsuleState>;
     const docs = Array.isArray(parsed.docs) ? parsed.docs.map(normalizeDoc).filter(Boolean) as CapsuleDoc[] : [];
+    // 老版本用随机 id 生成的引导文档：归并到固定 id，并去掉完全相同的重复副本
+    if (docs.some(isSeedDocLike)) {
+      if (!docs.some((d) => d.id === SEED_DOC_ID)) {
+        const first = docs.find(isSeedDocLike);
+        if (first) first.id = SEED_DOC_ID;
+      }
+      for (let i = docs.length - 1; i >= 0; i -= 1) {
+        if (docs[i].id !== SEED_DOC_ID && isSeedDocLike(docs[i])) docs.splice(i, 1);
+      }
+    }
     let categories = Array.isArray(parsed.categories) ? parsed.categories.map(String) : [];
     if (!categories.length) {
       const set = new Set(docs.map((d) => d.category || GENERAL));
@@ -230,6 +261,14 @@ export function applyRemoteState(
     }
     const normalized = normalizeDoc(ch.data);
     if (!normalized) continue;
+    // 云端可能还留着旧版随机 id 的引导文档；本地已有固定 id 时不再收进来
+    if (
+      normalized.id !== SEED_DOC_ID &&
+      isSeedDocLike(normalized) &&
+      docs.some((d) => d.id === SEED_DOC_ID)
+    ) {
+      continue;
+    }
     const incoming: CapsuleDoc = {
       ...normalized,
       updatedAt: Math.max(Number(normalized.updatedAt) || 0, Number(ch.updatedAt) || 0),
@@ -266,7 +305,8 @@ export function renameCategory(
   if (state.categories.includes(next)) return { state, error: "分类名已存在" };
   const categories = state.categories.map((c) => (c === from ? next : c)).sort();
   const docs = state.docs.map((d) => (d.category === from ? { ...d, category: next } : d));
-  return { state: { ...state, categories, docs, __categoriesUpdatedAt: Date.now() } };
+  const ui = state.ui.searchCategory === from ? { ...state.ui, searchCategory: next } : state.ui;
+  return { state: { ...state, categories, docs, ui, __categoriesUpdatedAt: Date.now() } };
 }
 
 export function deleteCategory(state: CapsuleState, name: string): CapsuleState {

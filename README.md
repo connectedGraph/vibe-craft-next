@@ -17,7 +17,9 @@
 
 五个工具都是 React 组件，共用同一套 `/api/v1`；本地数据仍存 localStorage，key 与旧版一致（`bri_app_pro_v2` / `glass_memory_v2` / `bri_fix_pro_v1` / `aura_pkm_data_v2`），老数据直接可读。
 
-**首次使用**：只有在「从来没存过数据」时才会写入引导内容——胶囊是一篇带示例标注的 Welcome 文档，Contextly 是一张 epiphany 卡，Expressing 是一条示例对比，Desktop Lite 自带示例板面与今日日志。用户把内容删光后再进来不会反复塞回（等幂）。
+**首次使用**：只有在「从来没存过数据」时才会写入引导内容——胶囊是一篇带示例标注的 Welcome 文档，Contextly 是一张 epiphany 卡，Expressing 是一条示例对比，Desktop Lite 自带示例板面与今日日志。用户把内容删光后再进来不会反复塞回（等幂）。引导记录使用固定 id，多设备首次使用同步到同一账号时不会生成重复文档；旧版随机 id 的引导会在读取时自动归并。
+
+每个工具的侧栏或设置里都有账号入口（未登录显示「登录同步」），登录后显示用户名与「退出登录」；首页与右上角同样保留退出入口。胶囊的 Cloud Sync 面板除同源账号模式外，也恢复了旧版的手动服务器地址 + `vck_` Access Token 模式。
 
 Prompt Capsule 的完整能力：View / Note / Edit 三态；Note 模式选中文字弹出标注按钮，右侧抽屉增改删、点击高亮定位；分类管理（重命名/删除并把文档迁回 General）；文库网格；专注模式；KaTeX 公式；带术语双向链接的 Markdown 导出；`.bri` 导入（先备份再按 id 合并）与导出；云同步面板（连接测试、立即同步、云端备份导入导出、冲突列表）；单文档版本历史。图标为自绘 SVG（书签 + V），含 favicon / 192 / 512 / maskable / apple-touch。
 

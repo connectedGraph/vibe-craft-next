@@ -44,8 +44,11 @@ test('capsule.seedState：新版首次进入拿到与旧版一致的引导文档
   assert.deepEqual(state.docs[0].tags, ['guide', 'glassmorphism']);
   assert.equal(state.docs[0].annotations.length, 1);
   assert.equal(state.docs[0].annotations[0].text, 'annotations');
-  assert.deepEqual(state.categories, ['General', 'Vocabulary', 'Grammar']);
+  assert.deepEqual(state.categories, ['General', 'Vocabulary', 'Grammar', 'Reading']);
   assert.equal(state.activeDocId, state.docs[0].id);
+  // 多设备首次使用要生成同一篇引导，避免同步成重复文档
+  assert.equal(state.docs[0].id, capsule.SEED_DOC_ID);
+  assert.equal(capsule.seedState().docs[0].id, capsule.SEED_DOC_ID);
 });
 
 test('capsule.loadState：没有存储时写入引导数据，二次读取不重复', (t) => {
@@ -55,6 +58,38 @@ test('capsule.loadState：没有存储时写入引导数据，二次读取不重
   assert.equal(second.docs.length, 1);
   assert.equal(second.docs[0].id, first.docs[0].id);
   assert.equal(readKey(win, capsule.STORAGE_KEY).docs.length, 1);
+});
+
+test('capsule.loadState：旧版随机 id 的引导合并到固定 id 并去重', (t) => {
+  const win = withWindow(t);
+  const seed = capsule.seedState().docs[0];
+  const legacyA = { ...seed, id: 'legacy-welcome-a' };
+  const legacyB = { ...seed, id: 'legacy-welcome-b' };
+  win.localStorage.setItem(capsule.STORAGE_KEY, JSON.stringify({
+    docs: [legacyA, legacyB],
+    categories: ['General'],
+    activeDocId: 'legacy-welcome-a',
+    ui: capsule.defaultUI(),
+  }));
+  const state = capsule.loadState();
+  assert.equal(state.docs.length, 1);
+  assert.equal(state.docs[0].id, capsule.SEED_DOC_ID);
+  assert.equal(state.activeDocId, capsule.SEED_DOC_ID);
+});
+
+test('capsule.applyRemoteState：本地已有固定引导时忽略云端旧随机 id 引导', () => {
+  const seed = capsule.seedState().docs[0];
+  const state = {
+    docs: [seed],
+    categories: ['General'],
+    activeDocId: seed.id,
+    ui: capsule.defaultUI(),
+  };
+  const res = capsule.applyRemoteState(state, [
+    { id: 'legacy-welcome', data: { ...seed, id: 'legacy-welcome', title: 'Welcome to Bri.Learn' }, updatedAt: Date.now() + 1 },
+  ]);
+  assert.equal(res.state.docs.length, 1);
+  assert.equal(res.state.docs[0].id, capsule.SEED_DOC_ID);
 });
 
 test('capsule.loadState：用户把文档删光后不会重新塞引导（等幂）', (t) => {
@@ -160,7 +195,7 @@ test('capsule 分类：新增、重命名、删除后文档回 General', () => {
     ],
     categories: ['General', 'Old'],
     activeDocId: 'a',
-    ui: capsule.defaultUI(),
+    ui: { ...capsule.defaultUI(), searchCategory: 'Old' },
   };
   const added = capsule.addCategory(state, 'New');
   assert.ok(added.state.categories.includes('New'));
@@ -169,6 +204,7 @@ test('capsule 分类：新增、重命名、删除后文档回 General', () => {
   const renamed = capsule.renameCategory(added.state, 'Old', 'Renamed');
   assert.ok(renamed.state.categories.includes('Renamed'));
   assert.equal(renamed.state.docs[0].category, 'Renamed');
+  assert.equal(renamed.state.ui.searchCategory, 'Renamed');
 
   const deleted = capsule.deleteCategory(renamed.state, 'Renamed');
   assert.equal(deleted.categories.includes('Renamed'), false);
@@ -217,6 +253,7 @@ test('contextly.ensureSeedCard：首次写入 epiphany，之后幂等', (t) => {
   const data = readKey(win, 'glass_memory_v2');
   assert.equal(data.cards.length, 1);
   assert.equal(data.cards[0].term, 'epiphany');
+  assert.equal(data.cards[0].id, 'seed-epiphany');
   assert.equal(contextly.ensureSeedCard(), false);
   assert.equal(readKey(win, 'glass_memory_v2').cards.length, 1);
 
@@ -226,12 +263,50 @@ test('contextly.ensureSeedCard：首次写入 epiphany，之后幂等', (t) => {
   assert.equal(contextly.loadData().cards.length, 0);
 });
 
+test('contextly.loadData：旧版随机 id 的 epiphany 卡归并到固定 id', (t) => {
+  const win = withWindow(t);
+  const base = {
+    ...contextly.SEED_CARD,
+    created: 1, state: 'new', due: 1, stability: 0, difficulty: 0, reps: 0,
+  };
+  contextly.saveData({
+    settings: {},
+    cards: [
+      { ...base, id: 'legacy-epiphany-a' },
+      { ...base, id: 'legacy-epiphany-b' },
+    ],
+  });
+  const data = contextly.loadData();
+  assert.equal(data.cards.length, 1);
+  assert.equal(data.cards[0].id, 'seed-epiphany');
+  assert.equal(readKey(win, 'glass_memory_v2').cards.length, 1);
+});
+
+test('expressing.loadState：旧版随机 id 的示例合并到固定 id 并去重', (t) => {
+  const win = withWindow(t);
+  const seed = expressing.mockState().docs[0];
+  win.localStorage.setItem('bri_fix_pro_v1', JSON.stringify({
+    docs: [
+      { ...seed, id: 'legacy-expressing-a' },
+      { ...seed, id: 'legacy-expressing-b' },
+    ],
+    categories: ['General', 'Daily Life'],
+    activeDocId: 'legacy-expressing-a',
+    ui: expressing.initialState().ui,
+  }));
+  const state = expressing.loadState();
+  assert.equal(state.docs.length, 1);
+  assert.equal(state.docs[0].id, expressing.SEED_DOC_ID);
+  assert.equal(state.activeDocId, expressing.SEED_DOC_ID);
+});
+
 test('expressing.loadState：首次引导一张示例，删光后不重复引导', (t) => {
   const win = withWindow(t);
   const first = expressing.loadState();
   assert.equal(first.docs.length, 1);
   assert.equal(first.docs[0].title, 'Expressing Strong Preference');
   assert.equal(first.docs[0].annotations.length, 1);
+  assert.equal(expressing.mockState().docs[0].id, first.docs[0].id);
   expressing.persistState({ ...first, docs: [], activeDocId: null });
   const again = expressing.loadState();
   assert.equal(again.docs.length, 0);

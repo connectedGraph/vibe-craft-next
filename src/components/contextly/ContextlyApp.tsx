@@ -9,8 +9,10 @@ import {
   deleteCard,
   EMPTY_CARD,
   ensureSeedCard,
+  generateId,
   loadData,
   rateCard,
+  saveData,
   saveSettings,
   splitHighlight,
   updateCard,
@@ -18,6 +20,7 @@ import {
   type StoreData,
 } from "@/lib/tools/contextly";
 import { useAccount } from "@/lib/useAccount";
+import SyncConflicts, { type SyncConflictItem } from "@/components/SyncConflicts";
 
 type View = "home" | "library" | "editor" | "settings" | "study-setup" | "study-session";
 
@@ -106,6 +109,7 @@ export default function ContextlyApp() {
   // 首次加载：只有从未存过数据时才补一张引导卡（等幂，删光了也不会再加）
   useEffect(() => {
     ensureSeedCard();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 一次性读取 localStorage 水合
     setData(loadData());
   }, []);
 
@@ -306,7 +310,6 @@ export default function ContextlyApp() {
           animation: ctxSpin 1s linear infinite; }
         @keyframes ctxSpin { to { transform: rotate(360deg) } }
       `}</style>
-      <Script src="https://unpkg.com/@phosphor-icons/web" strategy="afterInteractive" />
       <Script src="/shared/sync-client.js" strategy="afterInteractive" />
       <Script src="/shared/sync-widget.js" strategy="afterInteractive" />
 
@@ -776,6 +779,24 @@ export default function ContextlyApp() {
             ))}
         </main>
       </div>
+      <SyncConflicts
+        app="contextly"
+        onRestore={(item: SyncConflictItem) => {
+          const local = item.local as unknown as Card | null;
+          if (!local) return;
+          const data = loadData();
+          const copy: Card = {
+            ...local,
+            id: generateId(),
+            term: (local.term || "Untitled") + " · 恢复",
+            updatedAt: Date.now(),
+          };
+          data.cards.push(copy);
+          saveData(data);
+          refresh();
+          openEditor(copy);
+        }}
+      />
     </div>
   );
 }

@@ -8,7 +8,7 @@ const tools = [
     href: "/prompt-capsule",
     name: "Prompt Capsule",
     desc: "把 AI 对话、问题和分析整理成可标注的知识卡。",
-    icon: "📖",
+    icon: "ph-read-cv-logo",
     react: true,
     tag: "React",
   },
@@ -16,7 +16,7 @@ const tools = [
     href: "/contextly",
     name: "Contextly",
     desc: "带上下文的词汇积累：生词、当前句、前后句一起记。",
-    icon: "🔤",
+    icon: "ph-translate",
     react: true,
     tag: "React",
   },
@@ -24,7 +24,7 @@ const tools = [
     href: "/expressing",
     name: "Expressing",
     desc: "中文 → 地道英文：初稿与润色后表达左右对比。",
-    icon: "⇄",
+    icon: "ph-arrows-left-right",
     react: true,
     tag: "React",
   },
@@ -32,7 +32,7 @@ const tools = [
     href: "/desktop-lite",
     name: "Desktop Lite",
     desc: "Aura PKM：剪贴板、日志、索引和极简专注工作台。",
-    icon: "🗂",
+    icon: "ph-database",
     react: true,
     tag: "React",
   },
@@ -40,7 +40,7 @@ const tools = [
     href: "/adhd-text",
     name: "ADHD Text",
     desc: "阅读排版实验室：对阅读障碍友好的字体、标尺与专注辅助。",
-    icon: "📐",
+    icon: "ph-text-t",
     react: true,
     tag: "React",
   },
@@ -104,7 +104,7 @@ export default async function Home() {
               <div className="relative space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="grid h-12 w-12 place-items-center rounded-2xl bg-indigo-500/10 text-2xl text-indigo-300">
-                    {tool.icon}
+                    <i className={`ph-bold ${tool.icon}`} />
                   </div>
                   <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${tool.react ? "bg-emerald-400/10 text-emerald-300" : "bg-slate-400/10 text-slate-300"}`}>
                     {tool.tag}

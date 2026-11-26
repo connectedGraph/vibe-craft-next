@@ -119,6 +119,11 @@ export function loadState(): ExpressState {
       ui: { ...initialState().ui, ...(parsed.ui || {}) },
     };
     state.docs = (state.docs || []).map((d) => ({ ...d, tags: d.tags || [], annotations: d.annotations || [] }));
+    // 用户可能改过示例正文：只要同名示例只有一篇，也归并到固定 id
+    if (!state.docs.some((d) => d.id === SEED_DOC_ID)) {
+      const seeds = state.docs.filter((d) => d.title === "Expressing Strong Preference");
+      if (seeds.length === 1) seeds[0].id = SEED_DOC_ID;
+    }
     // 老版本用随机 id 生成的示例：归并到固定 id，并去掉完全相同的重复副本
     if (state.docs.some(isSeedDocLike)) {
       if (!state.docs.some((d) => d.id === SEED_DOC_ID)) {

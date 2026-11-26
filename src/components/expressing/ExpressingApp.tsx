@@ -19,6 +19,7 @@ import {
   type Mode,
 } from "@/lib/tools/expressing";
 import { useAccount } from "@/lib/useAccount";
+import SyncConflicts, { type SyncConflictItem } from "@/components/SyncConflicts";
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -53,18 +54,18 @@ export default function ExpressingApp() {
   const mountedSync = useRef(false);
 
   const commit = useCallback((updater: (prev: ExpressState) => ExpressState) => {
-    setState((prev) => {
-      const next = updater(prev);
-      stateRef.current = next;
-      persistState(next);
-      return next;
-    });
+    // 同步计算并更新 stateRef：同步回调（冲突处理）可能在同一 tick 连续调用多次
+    const next = updater(stateRef.current);
+    stateRef.current = next;
+    persistState(next);
+    setState(next);
   }, []);
 
   // 首屏：读本地状态（无数据时种一条示例，与旧版一致）
   useEffect(() => {
     const loaded = loadState();
     stateRef.current = loaded;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 一次性读取 localStorage 水合
     setState(loaded);
     setHydrated(true);
     import("dompurify")
@@ -206,6 +207,7 @@ export default function ExpressingApp() {
 
   // 切换文档时同步标签草稿
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 文档切换时把持久化标签同步到编辑草稿
     setTagDraft(activeDoc ? activeDoc.tags.join(", ") : "");
   }, [activeDoc?.id, activeDoc]);
 
@@ -502,7 +504,6 @@ export default function ExpressingApp() {
           #expressing-sidebar.mobile-open { transform: translateX(0); }
         }
       `}</style>
-      <Script src="https://unpkg.com/@phosphor-icons/web" strategy="afterInteractive" />
       <Script src="/shared/sync-client.js" strategy="afterInteractive" />
       <Script src="/shared/sync-widget.js" strategy="afterInteractive" />
 
@@ -1241,6 +1242,25 @@ export default function ExpressingApp() {
       )}
       {/* syncReady 仅用于提示，不渲染 UI */}
       <span className="hidden" data-sync={syncReady ? "1" : "0"} />
+      <SyncConflicts
+        app="expressing"
+        onRestore={(item: SyncConflictItem) => {
+          const local = item.local as unknown as ExpressDoc | null;
+          if (!local) return;
+          const copy: ExpressDoc = {
+            ...local,
+            id: generateId(),
+            title: (local.title || "Untitled") + " · 恢复",
+            updatedAt: Date.now(),
+          };
+          commit((prev) => ({
+            ...prev,
+            docs: [...prev.docs, copy],
+            activeDocId: copy.id,
+            ui: { ...prev.ui, globalMode: false },
+          }));
+        }}
+      />
     </div>
   );
 }

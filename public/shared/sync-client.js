@@ -346,7 +346,8 @@
       return;
     }
     running = true;
-    setStatus({ phase: 'syncing', lastError: null });
+    // 后台轮询不要把浮层反复翻成 Syncing…；手动同步和首次同步才显示
+    if ((opts && opts.manual) || !status.lastSyncAt) setStatus({ phase: 'syncing', lastError: null });
     try {
       const curr = computeSnapshot();
       const ops = diffSnapshots(lastSnapshot, curr);
@@ -529,11 +530,11 @@
       setStatus({ phase: account.mode === 'off' ? 'idle' : 'login-required', authUser: null });
       if (location.protocol === 'http:' || location.protocol === 'https:') {
         const next = encodeURIComponent(location.pathname + location.search);
-        location.href = `/login.html?next=${next}`;
+        location.href = `/login?next=${next}`;
       }
     },
 
-    loginUrl: (next) => `/login.html?next=${encodeURIComponent(next || (location.pathname + location.search))}`,
+    loginUrl: (next) => `/login?next=${encodeURIComponent(next || (location.pathname + location.search))}`,
 
     syncNow: () => tick({ manual: true }),
 

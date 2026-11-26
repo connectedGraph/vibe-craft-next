@@ -62,7 +62,7 @@
         <div id="vs-status" class="muted" style="margin-top:4px"></div>
         <div class="row">
           <button id="vs-now" type="button">Sync Now</button>
-          <a id="vs-admin" href="/admin.html" style="display:none">管理</a>
+          <a id="vs-admin" href="/admin" style="display:none">管理</a>
           <button id="vs-logout" type="button">退出</button>
         </div>
       </div>`;

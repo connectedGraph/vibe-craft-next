@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 type Panel = 'login' | 'register' | 'change' | 'off';
@@ -356,12 +357,12 @@ function LoginInner() {
             <p className="mb-5 mt-1 text-[13px] leading-relaxed text-slate-500">
               这个实例没有开启登录，所有访问算同一个账号。
             </p>
-            <a
+            <Link
               href="/"
               className="block w-full rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 px-4 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-indigo-500/30"
             >
               直接进入
-            </a>
+            </Link>
           </section>
         )}
       </div>

@@ -90,6 +90,7 @@ export function useCapsuleSync(opts: {
 
   const snapRef = useRef<Record<string, string>>({});
   const runningRef = useRef(false);
+  const hasSyncedRef = useRef(false);
   const optsRef = useRef(opts);
   const configRef = useRef(config);
   useEffect(() => {
@@ -118,7 +119,7 @@ export function useCapsuleSync(opts: {
     } catch { /* 忽略 */ }
   }, [conflicts]);
 
-  const tick = useCallback(async () => {
+  const tick = useCallback(async (manual = false) => {
     if (!optsRef.current.enabled || runningRef.current) return;
     const cfg = configRef.current;
     if (!cfg.enabled) {
@@ -143,7 +144,8 @@ export function useCapsuleSync(opts: {
         }
         setUser(me.user?.username || (me.mode === 'off' ? 'anonymous' : null));
       }
-      setStatus('syncing');
+      // 轮询时不要把徽章反复翻成 Syncing…；只有手动同步和首次同步显示
+      if (manual || !hasSyncedRef.current) setStatus('syncing');
       setError('');
 
       const current = optsRef.current;
@@ -236,6 +238,7 @@ export function useCapsuleSync(opts: {
 
       setStatus('idle');
       setLastSyncAt(Date.now());
+      hasSyncedRef.current = true;
     } catch (e) {
       setStatus('error');
       setError(e instanceof Error ? e.message : String(e));
@@ -258,7 +261,7 @@ export function useCapsuleSync(opts: {
     setConfig(normalized);
     configRef.current = normalized;
     try { localStorage.setItem(CONFIG_KEY, JSON.stringify(normalized)); } catch { /* 忽略 */ }
-    if (normalized.enabled) void tick();
+    if (normalized.enabled) void tick(true);
   }, [tick]);
 
   const testConnection = useCallback(async () => {
@@ -271,7 +274,7 @@ export function useCapsuleSync(opts: {
     try {
       localStorage.setItem(CURSOR_KEY, '0');
     } catch { /* 忽略 */ }
-    await tick();
+    await tick(true);
   }, [tick]);
 
   const logout = useCallback(async () => {
@@ -304,7 +307,7 @@ export function useCapsuleSync(opts: {
     user,
     error,
     lastSyncAt,
-    syncNow: tick,
+    syncNow: () => tick(true),
     conflicts,
     clearConflicts,
     testConnection,

@@ -144,6 +144,11 @@ export function loadState(): CapsuleState {
   try {
     const parsed = JSON.parse(raw) as Partial<CapsuleState>;
     const docs = Array.isArray(parsed.docs) ? parsed.docs.map(normalizeDoc).filter(Boolean) as CapsuleDoc[] : [];
+    // 用户可能改过引导正文：只要同名 Welcome 只有一篇，也归并到固定 id
+    if (!docs.some((d) => d.id === SEED_DOC_ID)) {
+      const welcome = docs.filter((d) => d.title === "Welcome to Bri.Learn");
+      if (welcome.length === 1) welcome[0].id = SEED_DOC_ID;
+    }
     // 老版本用随机 id 生成的引导文档：归并到固定 id，并去掉完全相同的重复副本
     if (docs.some(isSeedDocLike)) {
       if (!docs.some((d) => d.id === SEED_DOC_ID)) {

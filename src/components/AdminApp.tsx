@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 
 type User = {
   username: string;
@@ -89,6 +90,7 @@ export default function AdminApp({ username }: { username: string }) {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 进入管理页时拉一次用户/设置/会话/令牌
     Promise.all([loadUsers(), loadSettings(), loadSessions(username), loadTokens()])
       .catch(e => toast(e.message, false));
   }, [loadUsers, loadSettings, loadSessions, loadTokens, username, toast]);
@@ -147,7 +149,7 @@ export default function AdminApp({ username }: { username: string }) {
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <span>{username} · 管理员</span>
-            <a href="/" className={btn}>返回工作台</a>
+            <Link href="/" className={btn}>返回工作台</Link>
             <form action="/api/v1/auth/logout" method="post">
               <button className={btn}>退出</button>
             </form>

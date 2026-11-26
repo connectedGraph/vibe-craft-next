@@ -28,6 +28,7 @@ import CategoryModal from './CategoryModal';
 import SyncModal from './SyncModal';
 import HistoryModal from './HistoryModal';
 import Icon, { type IconName } from './Icon';
+import { useAccount } from '@/lib/useAccount';
 
 type Props = { username: string };
 
@@ -70,7 +71,6 @@ export default function CapsuleApp({ username }: Props) {
   const [categoryError, setCategoryError] = useState('');
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [toast, setToast] = useState('');
 
   const stateRef = useRef(state);
@@ -94,10 +94,6 @@ export default function CapsuleApp({ username }: Props) {
   useEffect(() => {
     import('dompurify')
       .then((m) => setSanitize(() => (h: string) => m.default.sanitize(h)))
-      .catch(() => {});
-    fetch('/api/v1/auth/me', { credentials: 'same-origin' })
-      .then((r) => r.json())
-      .then((d) => setIsAdmin(d?.user?.role === 'admin'))
       .catch(() => {});
   }, []);
 
@@ -412,6 +408,9 @@ export default function CapsuleApp({ username }: Props) {
   }, []);
 
   /* ── 渲染 ── */
+  const { account } = useAccount();
+  const currentUsername = account === null ? username : (account.user?.username ?? '');
+  const currentIsAdmin = account?.user?.role === 'admin';
   const mode = state.ui.mode;
   const globalMode = state.ui.globalMode;
   const zenMode = state.ui.zenMode;
@@ -607,11 +606,11 @@ export default function CapsuleApp({ username }: Props) {
             />
             {STATUS_TEXT[sync.status] || sync.status}
           </button>
-          {username ? (
+          {currentUsername ? (
             <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-white/60 bg-white/40 px-3 py-1.5 text-[11px] text-slate-500">
               <span className="min-w-0 truncate">
-                账号 <b className="font-semibold text-slate-700">{username}</b>
-                {isAdmin ? ' · 管理员' : ''}
+                账号 <b className="font-semibold text-slate-700">{currentUsername}</b>
+                {currentIsAdmin ? ' · 管理员' : ''}
               </span>
               <button
                 onClick={() => void sync.logout()}
@@ -675,6 +674,7 @@ export default function CapsuleApp({ username }: Props) {
                 <input
                   value={active?.title || ''}
                   onChange={(e) => active && patchDoc(active.id, { title: e.target.value })}
+                  onBlur={() => active && !active.title.trim() && patchDoc(active.id, { title: 'Untitled' })}
                   placeholder="Untitled Document"
                   className="w-full truncate border-none bg-transparent text-base font-bold tracking-tight text-slate-800 outline-none placeholder:text-slate-300 lg:text-xl"
                 />
@@ -846,8 +846,8 @@ export default function CapsuleApp({ username }: Props) {
         open={syncModalOpen}
         onClose={() => setSyncModalOpen(false)}
         status={sync.status}
-        user={sync.user || (username ? username : null)}
-        isAdmin={isAdmin}
+        user={sync.user || (currentUsername ? currentUsername : null)}
+        isAdmin={currentIsAdmin}
         errorText={sync.error}
         lastSyncAt={sync.lastSyncAt}
         conflicts={sync.conflicts}

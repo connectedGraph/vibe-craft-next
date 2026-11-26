@@ -96,6 +96,11 @@ export function loadData(): StoreData {
     const parsed = JSON.parse(raw) as StoreData;
     const settings = parsed.settings || {};
     let cards = Array.isArray(parsed.cards) ? parsed.cards : [];
+    // 用户可能改过引导卡：只要 epiphany 只有一张，也归并到固定 id
+    if (!cards.some((c) => c.id === "seed-epiphany")) {
+      const seeds = cards.filter((c) => c.term === "epiphany");
+      if (seeds.length === 1) seeds[0].id = "seed-epiphany";
+    }
     if (cards.some(isSeedCardLike)) {
       if (!cards.some((c) => c.id === "seed-epiphany")) {
         const first = cards.find(isSeedCardLike);

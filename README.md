@@ -21,7 +21,9 @@
 
 每个工具的侧栏或设置里都有账号入口（未登录显示「登录同步」），登录后显示用户名与「退出登录」；首页与右上角同样保留退出入口。胶囊的 Cloud Sync 面板除同源账号模式外，也恢复了旧版的手动服务器地址 + `vck_` Access Token 模式。
 
-Prompt Capsule 的完整能力：View / Note / Edit 三态；Note 模式选中文字弹出标注按钮，右侧抽屉增改删、点击高亮定位；分类管理（重命名/删除并把文档迁回 General）；文库网格；专注模式；KaTeX 公式；带术语双向链接的 Markdown 导出；`.bri` 导入（先备份再按 id 合并）与导出；云同步面板（连接测试、立即同步、云端备份导入导出、冲突列表）；单文档版本历史。图标为自绘 SVG（书签 + V），含 favicon / 192 / 512 / maskable / apple-touch。
+Prompt Capsule 的完整能力：View / Note / Edit 三态；Note 模式选中文字弹出标注按钮，右侧抽屉增改删、点击高亮定位；分类管理（重命名/删除并把文档迁回 General）；文库网格；专注模式；KaTeX 公式；带术语双向链接的 Markdown 导出；`.bri` 导入（先备份再按 id 合并）与导出；云同步面板（连接测试、立即同步、云端备份导入导出、冲突列表，支持同源账号与手动 Server/Token 两种模式）；单文档版本历史。图标为自绘 SVG（书签 + V），含 favicon / 192 / 512 / maskable / apple-touch。
+
+图标字体与彩带脚本都本地托管在 `public/vendor/`（Phosphor regular/bold/fill、Font Awesome 6.4、canvas-confetti），不依赖 CDN；断网或 CDN 不可达时首页与各工具按钮不会变成空白。Expressing / Contextly / Desktop Lite 的同步冲突有独立入口（左下角「同步冲突 n」），可把本地版本恢复成独立记录。
 
 旧的静态页地址（如 `/contextly/index.html`）全部 307 跳到新路由。
 

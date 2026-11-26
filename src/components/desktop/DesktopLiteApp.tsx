@@ -23,6 +23,7 @@ import {
   type Pit,
 } from "@/lib/tools/desktopLite";
 import { useAccount } from "@/lib/useAccount";
+import SyncConflicts, { type SyncConflictItem } from "@/components/SyncConflicts";
 
 const QUOTES = ['"纯粹至美，至简则灵"', '"把灵感交给剪贴板，把心交给专注"', '"少即是多"', '"深沉的知识，始于每一次开坑"'];
 
@@ -66,12 +67,11 @@ export default function DesktopLiteApp() {
 
   const commit = useCallback(
     (updater: (prev: AuraState) => AuraState, options?: { silent?: boolean }) => {
-      setAura((prev) => {
-        const next = updater(prev);
-        auraRef.current = next;
-        persist(next);
-        return next;
-      });
+      // 同步更新 auraRef：冲突回调与云端应用可能在同一 tick 连续调用
+      const next = updater(auraRef.current);
+      auraRef.current = next;
+      persist(next);
+      setAura(next);
       if (!options?.silent) setSavingFlash();
     },
     [setSavingFlash],
@@ -81,6 +81,7 @@ export default function DesktopLiteApp() {
   useEffect(() => {
     const loaded = loadState();
     auraRef.current = loaded;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 一次性读取 localStorage 水合
     setAura(loaded);
     setLang(loadLang());
     setHydrated(true);
@@ -229,7 +230,7 @@ export default function DesktopLiteApp() {
               ) => {
                 let changed = false;
                 commit((prev) => {
-                  let next = { ...prev };
+                  const next = { ...prev };
                   for (const ch of changes) {
                     if (ch.op === "delete" || !ch.data) continue;
                     const data = ch.data as {
@@ -516,9 +517,9 @@ export default function DesktopLiteApp() {
       <link
         rel="stylesheet"
         precedence="default"
-        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        href="/vendor/fontawesome/css/all.min.css"
       />
-      <Script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js" strategy="afterInteractive" />
+      <Script src="/vendor/canvas-confetti.js" strategy="afterInteractive" />
       <Script src="/shared/sync-client.js" strategy="afterInteractive" />
       <Script src="/shared/sync-widget.js" strategy="afterInteractive" />
       <link
@@ -1419,6 +1420,33 @@ export default function DesktopLiteApp() {
           </span>
         </div>
       </main>
+      <SyncConflicts
+        app="desktop-lite"
+        onRestore={(item: SyncConflictItem) => {
+          const local = item.local as unknown as Clipboard | InboxItem | Pit | null;
+          if (!local) return;
+          const stamp = Date.now() + Math.floor(Math.random() * 1000);
+          if (item.collection === "clipboards") {
+            const record = local as Clipboard;
+            commit((prev) => ({
+              ...prev,
+              clipboards: [...prev.clipboards, { ...record, id: stamp, title: (record.title || "Board") + " · 恢复", updatedAt: Date.now() }],
+            }));
+          } else if (item.collection === "inboxItems") {
+            const record = local as InboxItem;
+            commit((prev) => ({
+              ...prev,
+              inboxItems: [...prev.inboxItems, { ...record, id: stamp, title: (record.title || "Untitled") + " · 恢复", updatedAt: Date.now() }],
+            }));
+          } else if (item.collection === "pits") {
+            const record = local as Pit;
+            commit((prev) => ({
+              ...prev,
+              pits: [...prev.pits, { ...record, id: stamp, name: (record.name || "Untitled") + " · 恢复", updatedAt: Date.now() }],
+            }));
+          }
+        }}
+      />
     </div>
   );
 }

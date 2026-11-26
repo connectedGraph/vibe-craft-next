@@ -92,7 +92,7 @@ export default function SyncConflicts({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-4 left-4 z-[80] flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50/95 px-3 py-2 text-[11px] font-semibold text-amber-800 shadow-lg backdrop-blur transition hover:border-amber-300 hover:bg-amber-100"
+        className="fixed bottom-4 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-2 rounded-full border border-amber-200 bg-amber-50/95 px-3 py-2 text-[11px] font-semibold text-amber-800 shadow-lg backdrop-blur transition hover:border-amber-300 hover:bg-amber-100"
       >
         <span className="h-2 w-2 rounded-full bg-amber-500" />
         同步冲突 {items.length}
@@ -104,7 +104,7 @@ export default function SyncConflicts({
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
               <div>
                 <h3 className="text-sm font-bold text-slate-800">同步冲突</h3>
-                <p className="mt-0.5 text-[11px] text-slate-400">云端版本已生效，本地版本已另存为冲突副本。</p>
+                <p className="mt-0.5 text-[11px] text-slate-400">云端版本已生效；可把本地版本恢复成独立记录。</p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600" aria-label="关闭">
                 ✕
